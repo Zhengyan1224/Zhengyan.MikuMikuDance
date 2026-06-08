@@ -229,8 +229,8 @@ public sealed class PmmLegacyProjectReaderTests
         writer.Write(0);
         writer.Write(0);
         writer.Write(1f);
-        WriteFixedShiftJis(writer, "video.avi", 256);
-        writer.Write(1);
+        WriteFixedShiftJis(writer, string.Empty, 256);
+        writer.Write(0);
         writer.Write(0);
         writer.Write(0);
         writer.Write(1f);
@@ -283,8 +283,8 @@ public sealed class PmmLegacyProjectReaderTests
         writer.Write(0);
         writer.Write(0);
         writer.Write(1f);
-        WriteFixedShiftJis(writer, string.Empty, 256);
-        writer.Write(0);
+        WriteFixedShiftJis(writer, "video.avi", 256);
+        writer.Write(1);
         writer.Write(0);
         writer.Write(0);
         writer.Write(1f);

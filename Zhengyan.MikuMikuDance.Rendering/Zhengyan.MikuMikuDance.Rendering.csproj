@@ -1,0 +1,7 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zhengyan.MikuMikuDance.Core\Zhengyan.MikuMikuDance.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zhengyan.MikuMikuDance.Core\Zhengyan.MikuMikuDance.Core.csproj" />
+    <ProjectReference Include="..\Zhengyan.MikuMikuDance.Formats\Zhengyan.MikuMikuDance.Formats.csproj" />
+    <ProjectReference Include="..\Zhengyan.MikuMikuDance.Rendering.OpenGL\Zhengyan.MikuMikuDance.Rendering.OpenGL.csproj" />
+  </ItemGroup>
+
+</Project>

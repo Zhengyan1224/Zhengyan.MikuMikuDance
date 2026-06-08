@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="Zhengyan.MikuMikuDance.App/Zhengyan.MikuMikuDance.App.csproj" />
+  <Project Path="Zhengyan.MikuMikuDance.Core/Zhengyan.MikuMikuDance.Core.csproj" />
+  <Project Path="Zhengyan.MikuMikuDance.Formats/Zhengyan.MikuMikuDance.Formats.csproj" />
+  <Project Path="Zhengyan.MikuMikuDance.Rendering.OpenGL/Zhengyan.MikuMikuDance.Rendering.OpenGL.csproj" />
+  <Project Path="Zhengyan.MikuMikuDance.Rendering/Zhengyan.MikuMikuDance.Rendering.csproj" />
+  <Project Path="Zhengyan.MikuMikuDance.Tests/Zhengyan.MikuMikuDance.Tests.csproj" />
+</Solution>

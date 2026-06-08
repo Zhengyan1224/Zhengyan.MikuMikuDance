@@ -39,10 +39,14 @@ public sealed class ProjectJsonReader
         ApplyTimeline(project.Timeline, document.Timeline);
         ApplyCamera(project.Camera, document.Camera);
         ApplyLight(project.Light, document.Light);
-        foreach (var model in document.Models.OrderBy(item => item.TransformOrder).ThenBy(item => item.DrawOrder))
+        ApplyBackground(project.Background, document.Background, baseDirectory);
+        var models = document.Models.OrderBy(item => item.DrawOrder).ToArray();
+        foreach (var model in models)
         {
             AddModel(project, model, baseDirectory, loadResources, resourceResolver);
         }
+
+        ApplyModelOutsideParents(project, models);
 
         foreach (var mesh in document.AccessoryMeshes)
         {
@@ -106,6 +110,8 @@ public sealed class ProjectJsonReader
         camera.Distance = dto.Distance;
         camera.FieldOfView = dto.FieldOfView;
         camera.PerspectiveEnabled = dto.Perspective;
+        camera.ParentModelName = dto.ParentModel;
+        camera.ParentBoneName = dto.ParentBone;
     }
 
     private static void ApplyLight(DirectionalLight light, LightDto? dto)
@@ -117,6 +123,28 @@ public sealed class ProjectJsonReader
 
         light.Color = dto.Color.ToVector3();
         light.Direction = dto.Direction.ToVector3();
+    }
+
+    private static void ApplyBackground(SceneBackground background, BackgroundDto? dto, string? baseDirectory)
+    {
+        if (dto is null)
+        {
+            return;
+        }
+
+        var resolvedPath = ResolvePath(dto.ImageSource, baseDirectory);
+        var resolvedVideoPath = ResolvePath(dto.VideoSource, baseDirectory);
+        background.VideoSource = CreateSourceUri(resolvedVideoPath, dto.VideoSource);
+        background.VideoEnabled = dto.VideoEnabled;
+        background.VideoOffsetX = dto.VideoOffsetX;
+        background.VideoOffsetY = dto.VideoOffsetY;
+        background.VideoScale = dto.VideoScale;
+        background.ImageSource = CreateSourceUri(resolvedPath, dto.ImageSource);
+        background.ImageEnabled = dto.ImageEnabled;
+        background.ImageOffsetX = dto.ImageOffsetX;
+        background.ImageOffsetY = dto.ImageOffsetY;
+        background.ImageScale = dto.ImageScale;
+        background.Normalize();
     }
 
     private static void AddModel(
@@ -141,7 +169,36 @@ public sealed class ProjectJsonReader
         var instance = project.AddModel(model);
         instance.Name = string.IsNullOrWhiteSpace(dto.Name) ? model.Name : dto.Name;
         instance.Visible = dto.Visible;
+        instance.TransformOrder = dto.TransformOrder;
         ApplyTransform(instance.Transform, dto.Transform);
+        if (dto.MorphWeights is not null)
+        {
+            foreach (var (name, weight) in dto.MorphWeights)
+            {
+                instance.SetMorphWeight(name, weight);
+            }
+        }
+    }
+
+    private static void ApplyModelOutsideParents(MmdProject project, IReadOnlyList<ModelDto> models)
+    {
+        for (var i = 0; i < models.Count && i < project.ModelInstances.Count; i++)
+        {
+            var dto = models[i];
+            if (dto.OutsideParents is null)
+            {
+                continue;
+            }
+
+            var instance = project.ModelInstances[i];
+            foreach (var binding in dto.OutsideParents)
+            {
+                instance.SetOutsideParentBinding(new ModelOutsideParentBinding(
+                    binding.Bone,
+                    binding.ParentModel,
+                    binding.ParentBone));
+            }
+        }
     }
 
     private static void AddAccessoryMesh(
@@ -354,6 +411,8 @@ public sealed class ProjectJsonReader
 
         public LightDto? Light { get; set; }
 
+        public BackgroundDto? Background { get; set; }
+
         public List<ModelDto> Models { get; set; } = [];
 
         public List<AccessoryDto> Accessories { get; set; } = [];
@@ -392,6 +451,10 @@ public sealed class ProjectJsonReader
         public int FieldOfView { get; set; }
 
         public bool Perspective { get; set; } = true;
+
+        public string? ParentModel { get; set; }
+
+        public string? ParentBone { get; set; }
     }
 
     private sealed class LightDto
@@ -399,6 +462,29 @@ public sealed class ProjectJsonReader
         public Vector3Dto Color { get; set; } = new();
 
         public Vector3Dto Direction { get; set; } = new();
+    }
+
+    private sealed class BackgroundDto
+    {
+        public string? VideoSource { get; set; }
+
+        public bool VideoEnabled { get; set; }
+
+        public int VideoOffsetX { get; set; }
+
+        public int VideoOffsetY { get; set; }
+
+        public float VideoScale { get; set; } = 1f;
+
+        public string? ImageSource { get; set; }
+
+        public bool ImageEnabled { get; set; }
+
+        public int ImageOffsetX { get; set; }
+
+        public int ImageOffsetY { get; set; }
+
+        public float ImageScale { get; set; } = 1f;
     }
 
     private sealed class ModelDto
@@ -416,6 +502,19 @@ public sealed class ProjectJsonReader
         public int TransformOrder { get; set; }
 
         public TransformDto? Transform { get; set; }
+
+        public Dictionary<string, float>? MorphWeights { get; set; }
+
+        public List<ModelOutsideParentDto>? OutsideParents { get; set; }
+    }
+
+    private sealed class ModelOutsideParentDto
+    {
+        public string Bone { get; set; } = string.Empty;
+
+        public string? ParentModel { get; set; }
+
+        public string? ParentBone { get; set; }
     }
 
     private sealed class AccessoryDto

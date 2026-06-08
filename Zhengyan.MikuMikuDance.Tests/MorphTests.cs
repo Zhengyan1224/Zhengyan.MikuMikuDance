@@ -110,6 +110,32 @@ public sealed class MorphTests
         AssertVectorClose(new Vector3(0, 0, 3), mesh.Vertices[0].Position);
     }
 
+    [Fact]
+    public void BuildsInstanceRenderMeshWithPreviewMorphWeights()
+    {
+        var model = ModelWithVertices(3);
+        model.Name = "instanceMorph";
+        model.AddIndex(0);
+        model.AddIndex(1);
+        model.AddIndex(2);
+        model.AddMorph(new Morph(
+            "move",
+            string.Empty,
+            MorphCategory.Other,
+            MorphType.Vertex,
+            [new VertexMorphOffset(0, new Vector3(0, 0, 4))]));
+        var project = new Core.Scene.MmdProject();
+        var instance = project.AddModel(model);
+
+        instance.SetMorphWeight("move", 0.25f);
+        var mesh = RenderMeshBuilder.FromModel(instance);
+
+        AssertVectorClose(new Vector3(0, 0, 1), mesh.Vertices[0].Position);
+
+        instance.SetMorphWeight("move", 0);
+        Assert.Empty(instance.MorphWeights);
+    }
+
     private static MmdModel ModelWithVertices(int vertexCount)
     {
         var model = new MmdModel(ModelFormat.Pmx);

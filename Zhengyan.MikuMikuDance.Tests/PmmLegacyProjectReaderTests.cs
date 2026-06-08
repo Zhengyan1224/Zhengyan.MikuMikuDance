@@ -24,12 +24,17 @@ public sealed class PmmLegacyProjectReaderTests
         Assert.Single(document.Models);
         Assert.Equal("Miku", document.Models[0].Name);
         Assert.Equal("center", Assert.Single(document.Models[0].BoneNames));
+        Assert.Equal(0, Assert.Single(document.Models[0].OutsideParentSubjectBoneIndices));
         Assert.Single(document.Models[0].BoneKeyframes);
         Assert.Equal("smile", Assert.Single(document.Models[0].MorphNames));
         Assert.Single(document.Accessories);
         Assert.Equal("stage", document.Accessories[0].Name);
         Assert.Equal(24, document.CurrentFrameIndex);
         Assert.Equal("music.wav", document.AudioPath);
+        Assert.True(document.BackgroundVideoEnabled);
+        Assert.Equal("video.avi", document.BackgroundVideoPath);
+        Assert.True(document.BackgroundImageEnabled);
+        Assert.Equal("background.png", document.BackgroundImagePath);
     }
 
     [Fact]
@@ -46,11 +51,16 @@ public sealed class PmmLegacyProjectReaderTests
         Assert.Equal("Miku", project.ModelInstances[0].Name);
         Assert.Equal(ModelFormat.Pmx, project.Models[0].Format);
         Assert.Single(project.Models[0].Bones);
+        Assert.True(project.Models[0].Bones[0].Flags.HasFlag(BoneFlags.OutsideParent));
         Assert.Single(project.Models[0].Morphs);
         Assert.Single(project.Accessories);
         Assert.Equal("stage", project.Accessories[0].Name);
         Assert.Equal("Miku", project.Accessories[0].ParentModelName);
         Assert.Equal("center", project.Accessories[0].ParentBoneName);
+        Assert.True(project.Background.VideoEnabled);
+        Assert.Equal("video.avi", project.Background.VideoSource!.ToString());
+        Assert.True(project.Background.ImageEnabled);
+        Assert.Equal("background.png", project.Background.ImageSource!.ToString());
         Assert.Single(project.Motions);
         Assert.Single(project.Motions[0].BoneKeyframes);
         Assert.Single(project.Motions[0].MorphKeyframes);
@@ -121,6 +131,12 @@ public sealed class PmmLegacyProjectReaderTests
         project.Camera.FieldOfView = 38;
         project.Light.Color = new Vector3(0.3f, 0.4f, 0.5f);
         project.Light.Direction = new Vector3(-1, -2, -3);
+        project.Background.VideoSource = new Uri("videos/background.avi", UriKind.Relative);
+        project.Background.VideoEnabled = true;
+        project.Background.VideoScale = 0.8f;
+        project.Background.ImageSource = new Uri("images/background.png", UriKind.Relative);
+        project.Background.ImageEnabled = true;
+        project.Background.ImageScale = 1.5f;
 
         var model = CreatePmdModelForPmmV1();
         model.Source = new Uri("models/miku.pmd", UriKind.Relative);
@@ -171,6 +187,10 @@ public sealed class PmmLegacyProjectReaderTests
         Assert.Single(document.SelfShadow!.Keyframes, item => item.FrameIndex != 0);
         Assert.Equal(18, document.CurrentFrameIndex);
         Assert.True(document.LoopEnabled);
+        Assert.True(document.BackgroundVideoEnabled);
+        Assert.Equal("videos/background.avi", document.BackgroundVideoPath);
+        Assert.True(document.BackgroundImageEnabled);
+        Assert.Equal("images/background.png", document.BackgroundImagePath);
     }
 
     private static byte[] CreatePmmV1Project(string modelPath)
@@ -209,8 +229,8 @@ public sealed class PmmLegacyProjectReaderTests
         writer.Write(0);
         writer.Write(0);
         writer.Write(1f);
-        WriteFixedShiftJis(writer, string.Empty, 256);
-        writer.Write(0);
+        WriteFixedShiftJis(writer, "video.avi", 256);
+        writer.Write(1);
         writer.Write(0);
         writer.Write(0);
         writer.Write(1f);
@@ -371,6 +391,7 @@ public sealed class PmmLegacyProjectReaderTests
         WriteVariableShiftJis(writer, "smile");
         writer.Write(1);
         writer.Write(0);
+        writer.Write(1);
         writer.Write(0);
         writer.Write((byte)1);
         writer.Write((byte)1);
@@ -386,11 +407,15 @@ public sealed class PmmLegacyProjectReaderTests
         writer.Write(0);
         WriteMorphKeyframe(writer, includeIndex: false, objectIndex: 0, frameIndex: 0);
         writer.Write(0);
-        WriteModelKeyframe(writer, includeIndex: false, objectIndex: 0, frameIndex: 0, constraintStates: 1, outsideParentStates: 0);
+        WriteModelKeyframe(writer, includeIndex: false, objectIndex: 0, frameIndex: 0, constraintStates: 1, outsideParentStates: 1);
         writer.Write(0);
         WriteBoneState(writer, version: 2);
         writer.Write(0f);
         writer.Write((byte)1);
+        writer.Write(0);
+        writer.Write(0);
+        writer.Write(-1);
+        writer.Write(-1);
         writer.Write((byte)1);
         writer.Write(0f);
         writer.Write((byte)1);

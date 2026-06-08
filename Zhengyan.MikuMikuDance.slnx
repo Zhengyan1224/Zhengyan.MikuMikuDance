@@ -5,4 +5,5 @@
   <Project Path="Zhengyan.MikuMikuDance.Rendering.OpenGL/Zhengyan.MikuMikuDance.Rendering.OpenGL.csproj" />
   <Project Path="Zhengyan.MikuMikuDance.Rendering/Zhengyan.MikuMikuDance.Rendering.csproj" />
   <Project Path="Zhengyan.MikuMikuDance.Tests/Zhengyan.MikuMikuDance.Tests.csproj" />
+  <Project Path="Zhengyan.MikuMikuDance.UI.ImGui/Zhengyan.MikuMikuDance.UI.ImGui.csproj" />
 </Solution>

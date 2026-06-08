@@ -14,6 +14,10 @@ public sealed class Camera
 
     public bool PerspectiveEnabled { get; set; } = true;
 
+    public string? ParentModelName { get; set; }
+
+    public string? ParentBoneName { get; set; }
+
     public Matrix4x4 CreateViewMatrix()
     {
         var rotation = Matrix4x4.CreateFromYawPitchRoll(Angle.Y, Angle.X, Angle.Z);

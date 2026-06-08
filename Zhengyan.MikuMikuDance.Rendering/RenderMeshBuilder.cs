@@ -22,7 +22,17 @@ public static class RenderMeshBuilder
     public static RenderMesh FromModel(ModelInstance instance)
     {
         ArgumentNullException.ThrowIfNull(instance);
-        return FromModel(instance.Model) with
+        if (instance.MorphWeights.Count == 0)
+        {
+            return FromModel(instance.Model) with
+            {
+                Name = string.IsNullOrWhiteSpace(instance.Name) ? instance.Model.Name : instance.Name,
+                WorldTransform = instance.Transform.CreateMatrix()
+            };
+        }
+
+        var morphs = MorphEvaluator.Evaluate(instance.Model, instance.MorphWeights);
+        return FromModel(instance.Model, ModelPose.BindPose(instance.Model), morphs) with
         {
             Name = string.IsNullOrWhiteSpace(instance.Name) ? instance.Model.Name : instance.Name,
             WorldTransform = instance.Transform.CreateMatrix()

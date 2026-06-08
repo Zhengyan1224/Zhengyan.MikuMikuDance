@@ -25,20 +25,55 @@ public sealed class ProjectJsonTests
         project.Camera.Distance = 35;
         project.Camera.FieldOfView = 42;
         project.Camera.PerspectiveEnabled = false;
+        project.Camera.ParentModelName = "MikuInstance";
+        project.Camera.ParentBoneName = "center";
         project.Light.Color = new Vector3(0.3f, 0.4f, 0.5f);
         project.Light.Direction = new Vector3(-1, -2, -3);
+        project.Background.VideoSource = new Uri(@"videos\background.avi", UriKind.Relative);
+        project.Background.VideoEnabled = true;
+        project.Background.VideoOffsetX = -20;
+        project.Background.VideoOffsetY = 6;
+        project.Background.VideoScale = 0.75f;
+        project.Background.ImageSource = new Uri(@"images\background.png", UriKind.Relative);
+        project.Background.ImageEnabled = true;
+        project.Background.ImageOffsetX = 12;
+        project.Background.ImageOffsetY = -8;
+        project.Background.ImageScale = 1.25f;
 
         var model = new MmdModel(ModelFormat.Pmx)
         {
             Name = "Miku",
             Source = new Uri(@"models\miku.pmx", UriKind.Relative)
         };
+        model.AddBone(new Bone(
+            "center",
+            string.Empty,
+            Vector3.Zero,
+            -1,
+            0,
+            BoneFlags.Rotatable | BoneFlags.Movable | BoneFlags.Visible | BoneFlags.Enabled | BoneFlags.OutsideParent,
+            -1,
+            Vector3.Zero,
+            -1,
+            0,
+            null,
+            null,
+            0,
+            null));
+        model.AddMorph(new Morph("smile", string.Empty, MorphCategory.Lip, MorphType.Vertex, []));
         var instance = project.AddModel(model);
         instance.Name = "MikuInstance";
         instance.Visible = false;
         instance.Transform.Translation = new Vector3(4, 5, 6);
         instance.Transform.Rotation = new Vector3(0.4f, 0.5f, 0.6f);
         instance.Transform.Scale = new Vector3(1.5f);
+        instance.SetMorphWeight("smile", 0.75f);
+        Assert.True(ModelOutsideParentBindingEditor.TrySetParent(
+            instance,
+            project,
+            "center",
+            "MikuInstance",
+            "center"));
 
         var accessory = new Accessory("stage")
         {
@@ -72,11 +107,28 @@ public sealed class ProjectJsonTests
         Assert.Equal(35, decoded.Camera.Distance);
         Assert.Equal(42, decoded.Camera.FieldOfView);
         Assert.False(decoded.Camera.PerspectiveEnabled);
+        Assert.Equal("MikuInstance", decoded.Camera.ParentModelName);
+        Assert.Equal("center", decoded.Camera.ParentBoneName);
         Assert.Equal(new Vector3(0.3f, 0.4f, 0.5f), decoded.Light.Color);
+        Assert.True(decoded.Background.VideoEnabled);
+        Assert.Equal(@"videos\background.avi", decoded.Background.VideoSource!.ToString());
+        Assert.Equal(-20, decoded.Background.VideoOffsetX);
+        Assert.Equal(6, decoded.Background.VideoOffsetY);
+        Assert.Equal(0.75f, decoded.Background.VideoScale, precision: 3);
+        Assert.True(decoded.Background.ImageEnabled);
+        Assert.Equal(@"images\background.png", decoded.Background.ImageSource!.ToString());
+        Assert.Equal(12, decoded.Background.ImageOffsetX);
+        Assert.Equal(-8, decoded.Background.ImageOffsetY);
+        Assert.Equal(1.25f, decoded.Background.ImageScale, precision: 3);
         Assert.Single(decoded.ModelInstances);
         Assert.Equal("MikuInstance", decoded.ModelInstances[0].Name);
         Assert.False(decoded.ModelInstances[0].Visible);
         Assert.Equal(new Vector3(4, 5, 6), decoded.ModelInstances[0].Transform.Translation);
+        Assert.Equal(0.75f, decoded.ModelInstances[0].GetMorphWeight("smile"), precision: 3);
+        var outsideParent = decoded.ModelInstances[0].GetOutsideParentBinding("center");
+        Assert.NotNull(outsideParent);
+        Assert.Equal("MikuInstance", outsideParent.ParentModelName);
+        Assert.Equal("center", outsideParent.ParentBoneName);
         Assert.Equal(ModelFormat.Pmx, decoded.Models[0].Format);
         Assert.Single(decoded.Accessories);
         Assert.Equal("stage", decoded.Accessories[0].Name);
@@ -131,6 +183,49 @@ public sealed class ProjectJsonTests
     }
 
     [Fact]
+    public void WritesAndReadsIndependentModelTransformOrder()
+    {
+        var project = new MmdProject { Name = "Ordering" };
+        var first = project.AddModel(new MmdModel(ModelFormat.Pmx) { Name = "first" });
+        first.Name = "first";
+        first.TransformOrder = 1;
+        var second = project.AddModel(new MmdModel(ModelFormat.Pmx) { Name = "second" });
+        second.Name = "second";
+        second.TransformOrder = 0;
+
+        var data = new ProjectJsonWriter().Write(project);
+        var decoded = new ProjectJsonReader().Read(data, loadResources: false);
+
+        Assert.Equal(["first", "second"], decoded.ModelInstances.Select(model => model.Name).ToArray());
+        Assert.Equal(["second", "first"], decoded.GetModelsByTransformOrder().Select(model => model.Name).ToArray());
+    }
+
+    [Fact]
+    public void ReadsOutsideParentBindingToLaterModel()
+    {
+        var project = new MmdProject { Name = "OutsideParent" };
+        var first = project.AddModel(CreateOutsideParentModel("subject"));
+        first.Name = "subject";
+        var parent = project.AddModel(CreateOutsideParentModel("parent"));
+        parent.Name = "parent";
+
+        Assert.True(ModelOutsideParentBindingEditor.TrySetParent(
+            first,
+            project,
+            "center",
+            "parent",
+            "center"));
+
+        var data = new ProjectJsonWriter().Write(project);
+        var decoded = new ProjectJsonReader().Read(data, loadResources: false);
+
+        var binding = decoded.ModelInstances[0].GetOutsideParentBinding("center");
+        Assert.NotNull(binding);
+        Assert.Equal("parent", binding.ParentModelName);
+        Assert.Equal("center", binding.ParentBoneName);
+    }
+
+    [Fact]
     public void WritesAndReadsProjectArchiveResources()
     {
         var accessoryMesh = new AccessoryMesh(
@@ -174,5 +269,26 @@ public sealed class ProjectJsonTests
         Assert.Equal("Walk", decoded.Motions[0].Name);
         Assert.Single(decoded.Motions[0].MorphKeyframes);
         Assert.Equal("Motion/0000-Walk.vmd", decoded.Motions[0].Source!.ToString());
+    }
+
+    private static MmdModel CreateOutsideParentModel(string name)
+    {
+        var model = new MmdModel(ModelFormat.Pmx) { Name = name };
+        model.AddBone(new Bone(
+            "center",
+            string.Empty,
+            Vector3.Zero,
+            -1,
+            0,
+            BoneFlags.Rotatable | BoneFlags.Movable | BoneFlags.Visible | BoneFlags.Enabled | BoneFlags.OutsideParent,
+            -1,
+            Vector3.Zero,
+            -1,
+            0,
+            null,
+            null,
+            0,
+            null));
+        return model;
     }
 }

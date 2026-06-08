@@ -42,7 +42,7 @@ public sealed class PmmLegacyProjectWriter
         writer.Write((byte)1); // self-shadow panel
 
         WriteModels(writer, project, motionView, projectPath);
-        WriteCamera(writer, project.Camera, motionView);
+        WriteCamera(writer, project, motionView);
         WriteLight(writer, project.Light, motionView);
         writer.Write((byte)0); // selected accessory index
         writer.Write(0); // accessory horizontal scroll
@@ -61,14 +61,14 @@ public sealed class PmmLegacyProjectWriter
         WriteFixedString(writer, string.Empty, PathSize);
         writer.Write(0); // background video offset x
         writer.Write(0); // background video offset y
-        writer.Write(1f); // background video scale
-        WriteFixedString(writer, string.Empty, PathSize);
-        writer.Write(0); // background video enabled
+        writer.Write(project.Background.VideoScale <= 0 ? 1f : project.Background.VideoScale);
+        WriteFixedString(writer, ToStoredPath(project.Background.VideoSource, projectPath), PathSize);
+        writer.Write(project.Background.VideoEnabled && project.Background.VideoSource is not null ? 1 : 0);
         writer.Write(0); // background image offset x
         writer.Write(0); // background image offset y
-        writer.Write(1f); // background image scale
-        WriteFixedString(writer, string.Empty, PathSize);
-        writer.Write((byte)0); // background image enabled
+        writer.Write(project.Background.ImageScale <= 0 ? 1f : project.Background.ImageScale);
+        WriteFixedString(writer, ToStoredPath(project.Background.ImageSource, projectPath), PathSize);
+        writer.Write((byte)(project.Background.ImageEnabled && project.Background.ImageSource is not null ? 1 : 0));
         writer.Write((byte)1); // information shown
         writer.Write((byte)1); // grid and axis
         writer.Write((byte)1); // ground shadow
@@ -186,7 +186,7 @@ public sealed class PmmLegacyProjectWriter
             writer.Write(outsideParentSubjectBoneIndex);
         }
 
-        writer.Write(checked((byte)Math.Clamp(index + 1, 0, byte.MaxValue)));
+        writer.Write(checked((byte)Math.Clamp(instance.TransformOrder + 1, 0, byte.MaxValue)));
         writer.Write((byte)(instance.Visible ? 1 : 0));
         writer.Write(0); // selected bone
         writer.Write(0);
@@ -265,14 +265,15 @@ public sealed class PmmLegacyProjectWriter
         writer.Write(checked((byte)Math.Clamp(index, 0, byte.MaxValue)));
     }
 
-    private static void WriteCamera(BinaryWriter writer, Camera camera, ProjectMotionView motionView)
+    private static void WriteCamera(BinaryWriter writer, MmdProject project, ProjectMotionView motionView)
     {
-        WriteCameraKeyframe(writer, motionView.CameraFrames.FirstOrDefault(item => item.FrameIndex == 0), camera, includeIndex: false);
+        var camera = project.Camera;
+        WriteCameraKeyframe(writer, motionView.CameraFrames.FirstOrDefault(item => item.FrameIndex == 0), camera, project, includeIndex: false);
         var frames = motionView.CameraFrames.Where(item => item.FrameIndex != 0).OrderBy(item => item.FrameIndex).ToArray();
         writer.Write(frames.Length);
         foreach (var frame in frames)
         {
-            WriteCameraKeyframe(writer, frame, camera, includeIndex: true);
+            WriteCameraKeyframe(writer, frame, camera, project, includeIndex: true);
         }
 
         WriteVector3(writer, camera.LookAt);
@@ -444,14 +445,15 @@ public sealed class PmmLegacyProjectWriter
         BinaryWriter writer,
         CameraKeyframe? keyframe,
         Camera camera,
+        MmdProject project,
         bool includeIndex)
     {
         WriteBaseKeyframe(writer, includeIndex, 0, keyframe?.FrameIndex ?? 0);
         writer.Write(keyframe?.Distance ?? camera.Distance);
         WriteVector3(writer, keyframe?.LookAt ?? camera.LookAt);
         WriteVector3(writer, keyframe?.Angle ?? camera.Angle);
-        writer.Write(-1);
-        writer.Write(-1);
+        writer.Write(ResolveModelIndex(project, camera.ParentModelName));
+        writer.Write(ResolveBoneIndex(project, camera.ParentModelName, camera.ParentBoneName));
         WriteCameraInterpolation(writer, keyframe?.Interpolation ?? CameraInterpolation.Linear);
         writer.Write((byte)(keyframe?.PerspectiveEnabled ?? camera.PerspectiveEnabled ? 0 : 1));
         writer.Write(keyframe?.FieldOfView ?? camera.FieldOfView);

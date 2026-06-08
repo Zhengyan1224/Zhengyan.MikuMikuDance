@@ -16,6 +16,7 @@
     <ProjectReference Include="..\Zhengyan.MikuMikuDance.Formats\Zhengyan.MikuMikuDance.Formats.csproj" />
     <ProjectReference Include="..\Zhengyan.MikuMikuDance.Rendering.OpenGL\Zhengyan.MikuMikuDance.Rendering.OpenGL.csproj" />
     <ProjectReference Include="..\Zhengyan.MikuMikuDance.Rendering\Zhengyan.MikuMikuDance.Rendering.csproj" />
+    <ProjectReference Include="..\Zhengyan.MikuMikuDance.UI.ImGui\Zhengyan.MikuMikuDance.UI.ImGui.csproj" />
   </ItemGroup>
 
   <ItemGroup>

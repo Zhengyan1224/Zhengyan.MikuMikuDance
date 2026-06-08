@@ -12,6 +12,7 @@ using Zhengyan.MikuMikuDance.Formats.Pmx;
 using Zhengyan.MikuMikuDance.Formats.Vmd;
 using Zhengyan.MikuMikuDance.Rendering;
 using Zhengyan.MikuMikuDance.Rendering.OpenGL;
+using Zhengyan.MikuMikuDance.UI.ImGui;
 
 namespace Zhengyan.MikuMikuDance.App;
 
@@ -32,6 +33,7 @@ internal static class ApplicationCommands
             "--export-pmm" when args.Count >= 3 => ExportPmm(args[1], args[2]),
             "--pose" when args.Count >= 4 => Pose(args[1], args[2], args[3]),
             "--preview" => Preview(args.Count >= 2 ? args[1] : null, args.Count >= 3 ? args[2] : null),
+            "--editor" => Editor(args.Count >= 2 ? args[1] : null),
             "--help" or "-h" => Help(),
             _ => Unknown(args[0])
         };
@@ -166,6 +168,16 @@ internal static class ApplicationCommands
         return 0;
     }
 
+    private static int Editor(string? projectPath)
+    {
+        var project = string.IsNullOrWhiteSpace(projectPath)
+            ? new MmdProject { Name = "Untitled" }
+            : LoadProject(projectPath);
+        using var host = new ImGuiEditorHost(project, projectPath);
+        host.Run();
+        return 0;
+    }
+
     private static int ExportPmm(string inputPath, string outputPath)
     {
         if (!File.Exists(inputPath))
@@ -236,6 +248,7 @@ internal static class ApplicationCommands
         Console.WriteLine("  --export-pmm <file.zmm|file.nma|file.pmm> <out.pmm>");
         Console.WriteLine("  --pose <file.pmd|file.pmx> <file.vmd|file.nmd> <frame>");
         Console.WriteLine("  --preview [file.pmd|file.pmx|file.x] [file.vmd|file.nmd]");
+        Console.WriteLine("  --editor [file.zmm|file.nma|file.pmm]");
     }
 
     private static void PrintModel(string format, MmdModel model)

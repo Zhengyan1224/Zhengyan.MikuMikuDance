@@ -832,8 +832,17 @@ public sealed class PmmLegacyProjectReader
         project.Timeline.SetPlaybackRange(
             document.BeginFrameEnabled ? document.BeginFrameIndex : 0,
             document.EndFrameEnabled ? document.EndFrameIndex : CalculateDuration(document));
+        project.Background.VideoSource = CreateSourceUri(
+            document.BackgroundVideoPath,
+            ResolvePath(document.BackgroundVideoPath, projectPath));
+        project.Background.VideoEnabled = document.BackgroundVideoEnabled;
+        project.Background.ImageSource = CreateSourceUri(
+            document.BackgroundImagePath,
+            ResolvePath(document.BackgroundImagePath, projectPath));
+        project.Background.ImageEnabled = document.BackgroundImageEnabled;
+        project.Background.Normalize();
 
-        foreach (var model in document.Models.OrderBy(item => item.TransformOrderIndex).ThenBy(item => item.DrawOrderIndex))
+        foreach (var model in document.Models.OrderBy(item => item.DrawOrderIndex))
         {
             AddModel(project, model, projectPath, loadResources);
         }
@@ -843,6 +852,7 @@ public sealed class PmmLegacyProjectReader
             AddAccessory(project, document, accessory, projectPath, loadResources);
         }
 
+        ApplyCameraParent(project.Camera, document);
         var motion = BuildMotion(document, projectPath);
         project.AddMotion(motion);
         SceneMotionApplier.Apply(project, MotionSampler.Sample(motion, document.CurrentFrameIndex));
@@ -872,6 +882,7 @@ public sealed class PmmLegacyProjectReader
         var instance = project.AddModel(model);
         instance.Name = string.IsNullOrWhiteSpace(source.Name) ? model.Name : source.Name;
         instance.Visible = source.Visible;
+        instance.TransformOrder = source.TransformOrderIndex;
     }
 
     private static void AddAccessory(
@@ -909,6 +920,18 @@ public sealed class PmmLegacyProjectReader
         project.AddAccessory(accessory);
     }
 
+    private static void ApplyCameraParent(Camera camera, PmmLegacyDocument document)
+    {
+        var initialFrame = document.Camera.Keyframes.FirstOrDefault(frame => frame.FrameIndex == 0);
+        if (initialFrame is null)
+        {
+            return;
+        }
+
+        camera.ParentModelName = ResolveModelName(document, initialFrame.ParentModelIndex);
+        camera.ParentBoneName = ResolveBoneName(document, initialFrame.ParentModelIndex, initialFrame.ParentModelBoneIndex);
+    }
+
     private static MmdModel CreatePlaceholderModel(PmmLegacyModel source, string? resolvedPath)
     {
         var model = new MmdModel(ModelFormatFromPath(resolvedPath ?? source.Path))
@@ -917,15 +940,21 @@ public sealed class PmmLegacyProjectReader
             EnglishName = source.EnglishName
         };
 
-        foreach (var boneName in source.BoneNames)
+        for (var i = 0; i < source.BoneNames.Count; i++)
         {
+            var flags = BoneFlags.Rotatable | BoneFlags.Movable | BoneFlags.Visible | BoneFlags.Enabled;
+            if (source.OutsideParentSubjectBoneIndices.Contains(i))
+            {
+                flags |= BoneFlags.OutsideParent;
+            }
+
             model.AddBone(new Bone(
-                boneName,
+                source.BoneNames[i],
                 string.Empty,
                 Vector3.Zero,
                 -1,
                 0,
-                BoneFlags.Rotatable | BoneFlags.Movable | BoneFlags.Visible | BoneFlags.Enabled,
+                flags,
                 -1,
                 Vector3.Zero,
                 -1,

@@ -28,6 +28,7 @@ public sealed class ProjectJsonWriter
             Timeline = TimelineDto.From(project.Timeline),
             Camera = CameraDto.From(project.Camera),
             Light = LightDto.From(project.Light),
+            Background = BackgroundDto.From(project.Background, baseDirectory),
             Models = project.ModelInstances
                 .Select((instance, index) => ModelDto.From(instance, index, baseDirectory, resourceMap))
                 .ToList(),
@@ -102,6 +103,8 @@ public sealed class ProjectJsonWriter
 
         public LightDto Light { get; set; } = new();
 
+        public BackgroundDto Background { get; set; } = new();
+
         public List<ModelDto> Models { get; set; } = [];
 
         public List<AccessoryDto> Accessories { get; set; } = [];
@@ -161,6 +164,10 @@ public sealed class ProjectJsonWriter
 
         public bool Perspective { get; set; }
 
+        public string? ParentModel { get; set; }
+
+        public string? ParentBone { get; set; }
+
         public static CameraDto From(Camera camera)
         {
             return new CameraDto
@@ -169,7 +176,9 @@ public sealed class ProjectJsonWriter
                 Angle = Vector3Dto.From(camera.Angle),
                 Distance = camera.Distance,
                 FieldOfView = camera.FieldOfView,
-                Perspective = camera.PerspectiveEnabled
+                Perspective = camera.PerspectiveEnabled,
+                ParentModel = camera.ParentModelName,
+                ParentBone = camera.ParentBoneName
             };
         }
     }
@@ -190,6 +199,46 @@ public sealed class ProjectJsonWriter
         }
     }
 
+    private sealed class BackgroundDto
+    {
+        public string? VideoSource { get; set; }
+
+        public bool VideoEnabled { get; set; }
+
+        public int VideoOffsetX { get; set; }
+
+        public int VideoOffsetY { get; set; }
+
+        public float VideoScale { get; set; } = 1f;
+
+        public string? ImageSource { get; set; }
+
+        public bool ImageEnabled { get; set; }
+
+        public int ImageOffsetX { get; set; }
+
+        public int ImageOffsetY { get; set; }
+
+        public float ImageScale { get; set; } = 1f;
+
+        public static BackgroundDto From(SceneBackground background, string? baseDirectory)
+        {
+            return new BackgroundDto
+            {
+                VideoSource = ToStoredPath(background.VideoSource, baseDirectory),
+                VideoEnabled = background.VideoEnabled,
+                VideoOffsetX = background.VideoOffsetX,
+                VideoOffsetY = background.VideoOffsetY,
+                VideoScale = background.VideoScale,
+                ImageSource = ToStoredPath(background.ImageSource, baseDirectory),
+                ImageEnabled = background.ImageEnabled,
+                ImageOffsetX = background.ImageOffsetX,
+                ImageOffsetY = background.ImageOffsetY,
+                ImageScale = background.ImageScale
+            };
+        }
+    }
+
     private sealed class ModelDto
     {
         public string Name { get; set; } = string.Empty;
@@ -206,12 +255,19 @@ public sealed class ProjectJsonWriter
 
         public TransformDto Transform { get; set; } = new();
 
+        public Dictionary<string, float>? MorphWeights { get; set; }
+
+        public List<ModelOutsideParentDto>? OutsideParents { get; set; }
+
         public static ModelDto From(
             ModelInstance instance,
             int order,
             string? baseDirectory,
             ProjectJsonResourceMap? resourceMap)
         {
+            var morphWeights = instance.MorphWeights
+                .Where(pair => pair.Value.Weight != 0)
+                .ToDictionary(pair => pair.Key, pair => pair.Value.Weight, StringComparer.Ordinal);
             return new ModelDto
             {
                 Name = instance.Name,
@@ -219,8 +275,31 @@ public sealed class ProjectJsonWriter
                 Format = instance.Model.Format.ToString(),
                 Visible = instance.Visible,
                 DrawOrder = order,
-                TransformOrder = order,
-                Transform = TransformDto.From(instance.Transform)
+                TransformOrder = instance.TransformOrder,
+                Transform = TransformDto.From(instance.Transform),
+                MorphWeights = morphWeights.Count == 0 ? null : morphWeights,
+                OutsideParents = instance.OutsideParentBindings.Count == 0
+                    ? null
+                    : instance.OutsideParentBindings.Values.Select(ModelOutsideParentDto.From).ToList()
+            };
+        }
+    }
+
+    private sealed class ModelOutsideParentDto
+    {
+        public string Bone { get; set; } = string.Empty;
+
+        public string? ParentModel { get; set; }
+
+        public string? ParentBone { get; set; }
+
+        public static ModelOutsideParentDto From(ModelOutsideParentBinding binding)
+        {
+            return new ModelOutsideParentDto
+            {
+                Bone = binding.BoneName,
+                ParentModel = binding.ParentModelName,
+                ParentBone = binding.ParentBoneName
             };
         }
     }

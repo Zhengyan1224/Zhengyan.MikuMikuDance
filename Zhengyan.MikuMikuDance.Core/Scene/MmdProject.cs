@@ -20,6 +20,8 @@ public sealed class MmdProject
 
     public DirectionalLight Light { get; } = new();
 
+    public SceneBackground Background { get; } = new();
+
     public IReadOnlyList<MmdModel> Models => new ReadOnlyCollection<MmdModel>(_models);
 
     public IReadOnlyList<ModelInstance> ModelInstances => new ReadOnlyCollection<ModelInstance>(_modelInstances);
@@ -37,6 +39,7 @@ public sealed class MmdProject
         ArgumentNullException.ThrowIfNull(model);
         _models.Add(model);
         var instance = new ModelInstance(model);
+        instance.TransformOrder = _modelInstances.Count;
         _modelInstances.Add(instance);
         return instance;
     }
@@ -45,6 +48,69 @@ public sealed class MmdProject
     {
         ArgumentNullException.ThrowIfNull(accessory);
         _accessories.Add(accessory);
+    }
+
+    public bool MoveModel(int sourceIndex, int targetIndex)
+    {
+        if (!CanMove(sourceIndex, targetIndex, _modelInstances.Count))
+        {
+            return false;
+        }
+
+        Move(_modelInstances, sourceIndex, targetIndex);
+        Move(_models, sourceIndex, targetIndex);
+        NormalizeTransformOrder();
+        return true;
+    }
+
+    public bool MoveModelTransformOrder(int sourceOrder, int targetOrder)
+    {
+        if (!CanMove(sourceOrder, targetOrder, _modelInstances.Count))
+        {
+            return false;
+        }
+
+        foreach (var instance in _modelInstances)
+        {
+            if (instance.TransformOrder == sourceOrder)
+            {
+                instance.TransformOrder = targetOrder;
+            }
+            else if (sourceOrder < targetOrder &&
+                instance.TransformOrder > sourceOrder &&
+                instance.TransformOrder <= targetOrder)
+            {
+                instance.TransformOrder--;
+            }
+            else if (sourceOrder > targetOrder &&
+                instance.TransformOrder >= targetOrder &&
+                instance.TransformOrder < sourceOrder)
+            {
+                instance.TransformOrder++;
+            }
+        }
+
+        NormalizeTransformOrder();
+        return true;
+    }
+
+    public IReadOnlyList<ModelInstance> GetModelsByTransformOrder()
+    {
+        return _modelInstances
+            .OrderBy(instance => instance.TransformOrder)
+            .ThenBy(instance => _modelInstances.IndexOf(instance))
+            .ToArray();
+    }
+
+    public bool MoveAccessory(int sourceIndex, int targetIndex)
+    {
+        if (!CanMove(sourceIndex, targetIndex, _accessories.Count))
+        {
+            return false;
+        }
+
+        Move(_accessories, sourceIndex, targetIndex);
+        return true;
     }
 
     public void AddAccessoryMesh(AccessoryMeshDocument accessoryMesh)
@@ -57,5 +123,30 @@ public sealed class MmdProject
     {
         ArgumentNullException.ThrowIfNull(motion);
         _motions.Add(motion);
+    }
+
+    private static bool CanMove(int sourceIndex, int targetIndex, int count)
+    {
+        return sourceIndex >= 0
+            && sourceIndex < count
+            && targetIndex >= 0
+            && targetIndex < count
+            && sourceIndex != targetIndex;
+    }
+
+    private static void Move<T>(List<T> items, int sourceIndex, int targetIndex)
+    {
+        var item = items[sourceIndex];
+        items.RemoveAt(sourceIndex);
+        items.Insert(targetIndex, item);
+    }
+
+    private void NormalizeTransformOrder()
+    {
+        var ordered = GetModelsByTransformOrder();
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            ordered[i].TransformOrder = i;
+        }
     }
 }

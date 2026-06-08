@@ -47,6 +47,18 @@ dotnet test .\Zhengyan.MikuMikuDance.Tests\Zhengyan.MikuMikuDance.Tests.csproj
 dotnet run --project .\Zhengyan.MikuMikuDance.App -- --preview
 ```
 
+启动 ImGui 编辑器壳：
+
+```powershell
+dotnet run --project .\Zhengyan.MikuMikuDance.App -- --editor
+```
+
+打开项目进入编辑器壳：
+
+```powershell
+dotnet run --project .\Zhengyan.MikuMikuDance.App -- --editor path\to\scene.zmm
+```
+
 预览模型：
 
 ```powershell
@@ -115,6 +127,9 @@ Zhengyan.MikuMikuDance.Rendering
 Zhengyan.MikuMikuDance.Rendering.OpenGL
   Silk.NET OpenGL 渲染器、纹理缓存、effect program cache、render target 管理
 
+Zhengyan.MikuMikuDance.UI.ImGui
+  ImGui.NET 编辑器壳、Silk.NET OpenGL/GLFW UI host、基础菜单、面板、偏好持久化、视口背景图片/视频占位层、视口网格和 pointed debug overlay、视口拾取选择、模型/附件/骨骼/Morph 活动对象选择、selection/pointed overlay、相机导航、Morph 滑块编辑、附件/相机/模型 outside parent 绑定 UI、draw order/transform order 编辑和基础快捷键命令路由
+
 Zhengyan.MikuMikuDance.App
   命令行入口和预览窗口入口
 
@@ -144,4 +159,3 @@ Zhengyan.MikuMikuDance.Tests
 - 格式解析和编辑命令需要补充单元测试
 - OpenGL 相关功能应保留无图形上下文的核心测试入口
 - 需要新增跨平台依赖时，优先确认 Windows、Linux 和 macOS 都能构建运行
-

@@ -5,7 +5,7 @@ namespace Zhengyan.MikuMikuDance.Rendering.OpenGL;
 internal sealed class OpenGlEffectSourceCache
 {
     private readonly string? _baseDirectory;
-    private readonly Dictionary<string, RenderEffect?> _effects = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, OpenGlCachedEffectSource> _effects = new(StringComparer.OrdinalIgnoreCase);
 
     public OpenGlEffectSourceCache(string? baseDirectory = null)
     {
@@ -28,34 +28,103 @@ internal sealed class OpenGlEffectSourceCache
 
         if (_effects.TryGetValue(resolvedPath, out var cached))
         {
-            effect = cached ?? default!;
-            return cached is not null;
+            effect = cached.Effect ?? default!;
+            return cached.Effect is not null;
         }
 
-        try
-        {
-            if (!File.Exists(resolvedPath))
-            {
-                _effects[resolvedPath] = null;
-                return false;
-            }
+        var loaded = LoadEffect(resolvedPath);
+        _effects[resolvedPath] = loaded;
+        effect = loaded.Effect ?? default!;
+        return loaded.Effect is not null;
+    }
 
-            using var stream = File.OpenRead(resolvedPath);
-            var document = new MmeEffectReader().Read(stream, resolvedPath);
-            effect = RenderEffectCompiler.Compile(document);
-            _effects[resolvedPath] = effect;
-            return true;
-        }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
+    public bool ReloadEffect(string? effectPath, out RenderEffect effect)
+    {
+        return ReloadEffect(effectPath, null, out effect);
+    }
+
+    public bool ReloadEffect(string? effectPath, RenderEffect? ownerEffect, out RenderEffect effect)
+    {
+        effect = default!;
+        var resolvedPath = ResolvePath(effectPath, ownerEffect);
+        if (resolvedPath is null)
         {
-            _effects[resolvedPath] = null;
             return false;
         }
+
+        var loaded = LoadEffect(resolvedPath);
+        _effects[resolvedPath] = loaded;
+        effect = loaded.Effect ?? default!;
+        return loaded.Effect is not null;
+    }
+
+    public bool Invalidate(string? effectPath, RenderEffect? ownerEffect = null)
+    {
+        var resolvedPath = ResolvePath(effectPath, ownerEffect);
+        return resolvedPath is not null && _effects.Remove(resolvedPath);
+    }
+
+    public void Clear()
+    {
+        _effects.Clear();
+    }
+
+    public IReadOnlyList<RenderEffectDiagnostic> GetDiagnostics(string? effectPath, RenderEffect? ownerEffect = null)
+    {
+        var resolvedPath = ResolvePath(effectPath, ownerEffect);
+        if (resolvedPath is null)
+        {
+            return [
+                RenderEffectDiagnostics.Error(
+                    "MME1000",
+                    "Effect path is empty or points to a hidden effect.")
+            ];
+        }
+
+        return _effects.TryGetValue(resolvedPath, out var cached)
+            ? cached.Diagnostics
+            : [];
     }
 
     internal string? ResolvePathForTesting(string? effectPath, RenderEffect? ownerEffect = null)
     {
         return ResolvePath(effectPath, ownerEffect);
+    }
+
+    internal IReadOnlyList<string> CachedPathsForTesting => _effects.Keys.ToArray();
+
+    private static OpenGlCachedEffectSource LoadEffect(string resolvedPath)
+    {
+        try
+        {
+            if (!File.Exists(resolvedPath))
+            {
+                return new OpenGlCachedEffectSource(
+                    null,
+                    [
+                        RenderEffectDiagnostics.Error(
+                            "MME1001",
+                            $"Effect file was not found: {resolvedPath}",
+                            resolvedPath)
+                    ]);
+            }
+
+            using var stream = File.OpenRead(resolvedPath);
+            var document = new MmeEffectReader().Read(stream, resolvedPath);
+            var effect = RenderEffectCompiler.Compile(document);
+            return new OpenGlCachedEffectSource(effect, RenderEffectDiagnostics.Analyze(effect));
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return new OpenGlCachedEffectSource(
+                null,
+                [
+                    RenderEffectDiagnostics.Error(
+                        "MME1002",
+                        $"Failed to load effect: {exception.Message}",
+                        resolvedPath)
+                ]);
+        }
     }
 
     private string? ResolvePath(string? effectPath, RenderEffect? ownerEffect)
@@ -159,3 +228,7 @@ internal sealed class OpenGlEffectSourceCache
         }
     }
 }
+
+internal sealed record OpenGlCachedEffectSource(
+    RenderEffect? Effect,
+    IReadOnlyList<RenderEffectDiagnostic> Diagnostics);

@@ -29,6 +29,7 @@ public sealed class ProjectJsonWriter
             Camera = CameraDto.From(project.Camera),
             Light = LightDto.From(project.Light),
             Background = BackgroundDto.From(project.Background, baseDirectory),
+            ColorTransform = ColorTransformDto.From(project.ColorTransform),
             Models = project.ModelInstances
                 .Select((instance, index) => ModelDto.From(instance, index, baseDirectory, resourceMap))
                 .ToList(),
@@ -104,6 +105,8 @@ public sealed class ProjectJsonWriter
         public LightDto Light { get; set; } = new();
 
         public BackgroundDto Background { get; set; } = new();
+
+        public ColorTransformDto ColorTransform { get; set; } = new();
 
         public List<ModelDto> Models { get; set; } = [];
 
@@ -221,6 +224,10 @@ public sealed class ProjectJsonWriter
 
         public float ImageScale { get; set; } = 1f;
 
+        public float ImageOpacity { get; set; } = 1f;
+
+        public string ImageLayoutMode { get; set; } = BackgroundImageLayoutMode.Fit.ToString();
+
         public static BackgroundDto From(SceneBackground background, string? baseDirectory)
         {
             return new BackgroundDto
@@ -234,7 +241,32 @@ public sealed class ProjectJsonWriter
                 ImageEnabled = background.ImageEnabled,
                 ImageOffsetX = background.ImageOffsetX,
                 ImageOffsetY = background.ImageOffsetY,
-                ImageScale = background.ImageScale
+                ImageScale = background.ImageScale,
+                ImageOpacity = background.ImageOpacity,
+                ImageLayoutMode = background.ImageLayoutMode.ToString()
+            };
+        }
+    }
+
+    private sealed class ColorTransformDto
+    {
+        public float Brightness { get; set; }
+
+        public float Contrast { get; set; } = 1f;
+
+        public float Saturation { get; set; } = 1f;
+
+        public float Gamma { get; set; } = 1f;
+
+        public static ColorTransformDto From(SceneColorTransform transform)
+        {
+            transform.Normalize();
+            return new ColorTransformDto
+            {
+                Brightness = transform.Brightness,
+                Contrast = transform.Contrast,
+                Saturation = transform.Saturation,
+                Gamma = transform.Gamma
             };
         }
     }
@@ -259,6 +291,8 @@ public sealed class ProjectJsonWriter
 
         public List<ModelOutsideParentDto>? OutsideParents { get; set; }
 
+        public List<EffectParameterDto>? EffectParameters { get; set; }
+
         public static ModelDto From(
             ModelInstance instance,
             int order,
@@ -280,7 +314,8 @@ public sealed class ProjectJsonWriter
                 MorphWeights = morphWeights.Count == 0 ? null : morphWeights,
                 OutsideParents = instance.OutsideParentBindings.Count == 0
                     ? null
-                    : instance.OutsideParentBindings.Values.Select(ModelOutsideParentDto.From).ToList()
+                    : instance.OutsideParentBindings.Values.Select(ModelOutsideParentDto.From).ToList(),
+                EffectParameters = EffectParameterDto.From(instance.EffectParameterOverrides)
             };
         }
     }
@@ -322,6 +357,8 @@ public sealed class ProjectJsonWriter
 
         public string? ParentBone { get; set; }
 
+        public List<EffectParameterDto>? EffectParameters { get; set; }
+
         public static AccessoryDto From(
             Accessory accessory,
             int order,
@@ -337,7 +374,72 @@ public sealed class ProjectJsonWriter
                 Transform = TransformDto.From(accessory.Transform),
                 Opacity = accessory.Opacity,
                 ParentModel = accessory.ParentModelName,
-                ParentBone = accessory.ParentBoneName
+                ParentBone = accessory.ParentBoneName,
+                EffectParameters = EffectParameterDto.From(accessory.EffectParameterOverrides)
+            };
+        }
+    }
+
+    private sealed class EffectParameterDto
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public string Type { get; set; } = string.Empty;
+
+        public bool? Bool { get; set; }
+
+        public int? Int { get; set; }
+
+        public float? Float { get; set; }
+
+        public Vector4Dto? Vector4 { get; set; }
+
+        public static List<EffectParameterDto>? From(EffectParameterOverrideSet overrides)
+        {
+            if (overrides.Count == 0)
+            {
+                return null;
+            }
+
+            return overrides.Values
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => From(pair.Key, pair.Value))
+                .ToList();
+        }
+
+        private static EffectParameterDto From(string name, MotionEffectParameterValue value)
+        {
+            return value switch
+            {
+                MotionEffectParameterValue.Bool boolValue => new EffectParameterDto
+                {
+                    Name = name,
+                    Type = "bool",
+                    Bool = boolValue.Value
+                },
+                MotionEffectParameterValue.Int intValue => new EffectParameterDto
+                {
+                    Name = name,
+                    Type = "int",
+                    Int = intValue.Value
+                },
+                MotionEffectParameterValue.Float floatValue => new EffectParameterDto
+                {
+                    Name = name,
+                    Type = "float",
+                    Float = floatValue.Value
+                },
+                MotionEffectParameterValue.Vector4 vectorValue => new EffectParameterDto
+                {
+                    Name = name,
+                    Type = "vector4",
+                    Vector4 = Vector4Dto.From(vectorValue.Value)
+                },
+                _ => new EffectParameterDto
+                {
+                    Name = name,
+                    Type = "unknown"
+                }
             };
         }
     }
@@ -468,6 +570,28 @@ public sealed class ProjectJsonWriter
                 X = value.X,
                 Y = value.Y,
                 Z = value.Z
+            };
+        }
+    }
+
+    private sealed class Vector4Dto
+    {
+        public float X { get; set; }
+
+        public float Y { get; set; }
+
+        public float Z { get; set; }
+
+        public float W { get; set; }
+
+        public static Vector4Dto From(Vector4 value)
+        {
+            return new Vector4Dto
+            {
+                X = value.X,
+                Y = value.Y,
+                Z = value.Z,
+                W = value.W
             };
         }
     }

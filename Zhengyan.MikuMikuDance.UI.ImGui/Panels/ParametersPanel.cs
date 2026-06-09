@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Text;
 using ImGuiNET;
+using Zhengyan.MikuMikuDance.Core.Animation;
 using Zhengyan.MikuMikuDance.Core.Modeling;
 using Zhengyan.MikuMikuDance.Core.Scene;
 using ImGuiApi = ImGuiNET.ImGui;
@@ -9,6 +10,13 @@ namespace Zhengyan.MikuMikuDance.UI.ImGui.Panels;
 
 public sealed class ParametersPanel : IImGuiEditorPanel
 {
+    private readonly byte[] _effectParameterNameBuffer = new byte[128];
+    private int _effectParameterTypeIndex;
+    private bool _effectParameterBool;
+    private int _effectParameterInt;
+    private float _effectParameterFloat;
+    private Vector4 _effectParameterVector = Vector4.One;
+
     public string Title => "Parameters";
 
     public void Draw(ImGuiEditorState state)
@@ -24,6 +32,8 @@ public sealed class ParametersPanel : IImGuiEditorPanel
         DrawLight(state);
         ImGuiApi.Separator();
         DrawBackground(state);
+        ImGuiApi.Separator();
+        DrawColorTransform(state);
         ImGuiApi.Separator();
         DrawSelection(state);
 
@@ -182,6 +192,24 @@ public sealed class ParametersPanel : IImGuiEditorPanel
             background.Normalize();
             state.StatusText = "Background image scale updated";
         }
+
+        var opacity = background.ImageOpacity;
+        if (ImGuiApi.SliderFloat("Image Opacity", ref opacity, 0f, 1f))
+        {
+            background.ImageOpacity = opacity;
+            background.Normalize();
+            state.StatusText = "Background image opacity updated";
+        }
+
+        var layoutIndex = background.ImageLayoutMode == BackgroundImageLayoutMode.Fill ? 1 : 0;
+        const string layoutItems = "Fit\0Fill\0";
+        if (ImGuiApi.Combo("Image Layout", ref layoutIndex, layoutItems, 2))
+        {
+            background.ImageLayoutMode = layoutIndex == 1
+                ? BackgroundImageLayoutMode.Fill
+                : BackgroundImageLayoutMode.Fit;
+            state.StatusText = "Background image layout updated";
+        }
     }
 
     private static void DrawBackgroundSourceInput(string label, Uri? source, Action<string> apply)
@@ -196,7 +224,59 @@ public sealed class ParametersPanel : IImGuiEditorPanel
         }
     }
 
-    private static void DrawSelection(ImGuiEditorState state)
+    private static void DrawColorTransform(ImGuiEditorState state)
+    {
+        var transform = state.Project.ColorTransform;
+        if (!ImGuiApi.TreeNodeEx("Color Transform", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            return;
+        }
+
+        var changed = false;
+        var brightness = transform.Brightness;
+        if (ImGuiApi.SliderFloat("Brightness", ref brightness, -1f, 1f))
+        {
+            transform.Brightness = brightness;
+            changed = true;
+        }
+
+        var contrast = transform.Contrast;
+        if (ImGuiApi.SliderFloat("Contrast", ref contrast, 0f, 4f))
+        {
+            transform.Contrast = contrast;
+            changed = true;
+        }
+
+        var saturation = transform.Saturation;
+        if (ImGuiApi.SliderFloat("Saturation", ref saturation, 0f, 4f))
+        {
+            transform.Saturation = saturation;
+            changed = true;
+        }
+
+        var gamma = transform.Gamma;
+        if (ImGuiApi.SliderFloat("Gamma", ref gamma, 0.01f, 8f))
+        {
+            transform.Gamma = gamma;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            transform.Normalize();
+            state.StatusText = "Color transform updated";
+        }
+
+        if (ImGuiApi.Button("Reset Color Transform"))
+        {
+            transform.Reset();
+            state.StatusText = "Color transform reset";
+        }
+
+        ImGuiApi.TreePop();
+    }
+
+    private void DrawSelection(ImGuiEditorState state)
     {
         if (!state.Selection.HasSelection)
         {
@@ -218,6 +298,7 @@ public sealed class ParametersPanel : IImGuiEditorPanel
             DrawTransform(model.Transform);
             DrawMorphWeights(state, model);
             DrawModelOutsideParents(state, model);
+            DrawEffectParameters(state, model.Name, model.EffectParameterOverrides);
             return;
         }
 
@@ -239,6 +320,7 @@ public sealed class ParametersPanel : IImGuiEditorPanel
 
             DrawTransform(accessory.Transform);
             DrawAccessoryParentBinding(state, accessory);
+            DrawEffectParameters(state, accessory.Name, accessory.EffectParameterOverrides);
         }
     }
 
@@ -483,6 +565,141 @@ public sealed class ParametersPanel : IImGuiEditorPanel
         ImGuiApi.TreePop();
     }
 
+    private void DrawEffectParameters(
+        ImGuiEditorState state,
+        string ownerName,
+        EffectParameterOverrideSet overrides)
+    {
+        ImGuiApi.Separator();
+        if (!ImGuiApi.TreeNodeEx($"Effect Parameters##effect-params-{ownerName}", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            return;
+        }
+
+        foreach (var pair in overrides.Values.OrderBy(pair => pair.Key, StringComparer.Ordinal).ToArray())
+        {
+            ImGuiApi.PushID($"effect-param-{ownerName}-{pair.Key}");
+            ImGuiApi.TextUnformatted(pair.Key);
+            DrawEffectParameterValue(state, overrides, pair.Key, pair.Value);
+            if (ImGuiApi.Button("Remove"))
+            {
+                overrides.Remove(pair.Key);
+                state.StatusText = $"Effect parameter removed: {pair.Key}";
+            }
+
+            ImGuiApi.Separator();
+            ImGuiApi.PopID();
+        }
+
+        if (overrides.Count > 0 && ImGuiApi.Button($"Clear Effect Parameters##clear-effect-params-{ownerName}"))
+        {
+            overrides.Clear();
+            state.StatusText = $"Effect parameters cleared: {ownerName}";
+        }
+
+        DrawNewEffectParameterEditor(state, ownerName, overrides);
+        ImGuiApi.TreePop();
+    }
+
+    private static void DrawEffectParameterValue(
+        ImGuiEditorState state,
+        EffectParameterOverrideSet overrides,
+        string name,
+        MotionEffectParameterValue value)
+    {
+        switch (value)
+        {
+            case MotionEffectParameterValue.Bool boolValue:
+                var boolResult = boolValue.Value;
+                if (ImGuiApi.Checkbox("Value", ref boolResult))
+                {
+                    overrides.SetBool(name, boolResult);
+                    state.StatusText = $"Effect parameter {name}: {boolResult}";
+                }
+                break;
+            case MotionEffectParameterValue.Int intValue:
+                var intResult = intValue.Value;
+                if (ImGuiApi.DragInt("Value", ref intResult, 1f))
+                {
+                    overrides.SetInt(name, intResult);
+                    state.StatusText = $"Effect parameter {name}: {intResult}";
+                }
+                break;
+            case MotionEffectParameterValue.Float floatValue:
+                var floatResult = floatValue.Value;
+                if (ImGuiApi.DragFloat("Value", ref floatResult, 0.01f))
+                {
+                    overrides.SetFloat(name, floatResult);
+                    state.StatusText = $"Effect parameter {name}: {floatResult:0.###}";
+                }
+                break;
+            case MotionEffectParameterValue.Vector4 vectorValue:
+                var vectorResult = vectorValue.Value;
+                if (ImGuiApi.DragFloat4("Value", ref vectorResult, 0.01f))
+                {
+                    overrides.SetVector4(name, vectorResult);
+                    state.StatusText = $"Effect parameter {name} updated";
+                }
+                break;
+        }
+    }
+
+    private void DrawNewEffectParameterEditor(
+        ImGuiEditorState state,
+        string ownerName,
+        EffectParameterOverrideSet overrides)
+    {
+        ImGuiApi.InputText($"Name##new-effect-param-name-{ownerName}", _effectParameterNameBuffer, (uint)_effectParameterNameBuffer.Length);
+        var typeItems = "Bool\0Int\0Float\0Vector4\0";
+        ImGuiApi.Combo($"Type##new-effect-param-type-{ownerName}", ref _effectParameterTypeIndex, typeItems, 4);
+        switch (_effectParameterTypeIndex)
+        {
+            case 0:
+                ImGuiApi.Checkbox($"Bool##new-effect-param-bool-{ownerName}", ref _effectParameterBool);
+                break;
+            case 1:
+                ImGuiApi.DragInt($"Int##new-effect-param-int-{ownerName}", ref _effectParameterInt, 1f);
+                break;
+            case 2:
+                ImGuiApi.DragFloat($"Float##new-effect-param-float-{ownerName}", ref _effectParameterFloat, 0.01f);
+                break;
+            default:
+                ImGuiApi.DragFloat4($"Vector4##new-effect-param-vector-{ownerName}", ref _effectParameterVector, 0.01f);
+                break;
+        }
+
+        if (!ImGuiApi.Button($"Add/Update Effect Parameter##add-effect-param-{ownerName}"))
+        {
+            return;
+        }
+
+        var name = ReadTextBuffer(_effectParameterNameBuffer);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            state.StatusText = "Effect parameter name is empty";
+            return;
+        }
+
+        switch (_effectParameterTypeIndex)
+        {
+            case 0:
+                overrides.SetBool(name, _effectParameterBool);
+                break;
+            case 1:
+                overrides.SetInt(name, _effectParameterInt);
+                break;
+            case 2:
+                overrides.SetFloat(name, _effectParameterFloat);
+                break;
+            default:
+                overrides.SetVector4(name, _effectParameterVector);
+                break;
+        }
+
+        Array.Clear(_effectParameterNameBuffer);
+        state.StatusText = $"Effect parameter updated: {name}";
+    }
+
     private static void DrawTransform(SceneTransform transform)
     {
         var translation = transform.Translation;
@@ -529,5 +746,10 @@ public sealed class ParametersPanel : IImGuiEditorPanel
         }
 
         return string.IsNullOrWhiteSpace(morph.EnglishName) ? "(unnamed morph)" : morph.EnglishName;
+    }
+
+    private static string ReadTextBuffer(byte[] buffer)
+    {
+        return Encoding.UTF8.GetString(buffer).TrimEnd('\0').Trim();
     }
 }

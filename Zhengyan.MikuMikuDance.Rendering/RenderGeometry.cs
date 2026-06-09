@@ -1,4 +1,5 @@
 using System.Numerics;
+using Zhengyan.MikuMikuDance.Core.Animation;
 
 namespace Zhengyan.MikuMikuDance.Rendering;
 
@@ -18,6 +19,8 @@ public sealed record RenderMaterial(
     bool GroundShadowEnabled = false)
 {
     public bool IsTransparent => Diffuse.W < 0.999f;
+
+    public bool RequiresTransparentPass => IsTransparent;
 }
 
 public enum SphereTextureBlendMode
@@ -39,4 +42,7 @@ public sealed record RenderMesh(
     public Matrix4x4 WorldTransform { get; init; } = Matrix4x4.Identity;
 
     public RenderEffect? Effect { get; init; }
+
+    public IReadOnlyDictionary<string, MotionEffectParameterValue> EffectParameterOverrides { get; init; } =
+        new Dictionary<string, MotionEffectParameterValue>(0, StringComparer.Ordinal);
 }

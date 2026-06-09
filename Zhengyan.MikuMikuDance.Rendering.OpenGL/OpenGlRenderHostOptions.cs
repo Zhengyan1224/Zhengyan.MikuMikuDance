@@ -8,6 +8,8 @@ public sealed record OpenGlRenderHostOptions(
     int Height,
     Vector4 ClearColor)
 {
+    public bool CaptureAndClose { get; init; }
+
     public static OpenGlRenderHostOptions Default { get; } = new(
         "Zhengyan MikuMikuDance",
         1280,

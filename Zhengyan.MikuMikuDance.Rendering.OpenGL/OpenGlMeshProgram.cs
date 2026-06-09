@@ -1,5 +1,6 @@
 using System.Numerics;
 using Silk.NET.OpenGL;
+using Zhengyan.MikuMikuDance.Core.Animation;
 using Zhengyan.MikuMikuDance.Rendering;
 
 namespace Zhengyan.MikuMikuDance.Rendering.OpenGL;
@@ -22,6 +23,7 @@ internal sealed class OpenGlMeshProgram : IDisposable
     private readonly int _sphereTextureModeUniform;
     private readonly int _toonTextureUniform;
     private readonly int _toonTextureEnabledUniform;
+    private readonly int _colorTransformUniform;
     private readonly int _edgeModelUniform;
     private readonly int _edgeViewUniform;
     private readonly int _edgeProjectionUniform;
@@ -66,6 +68,7 @@ internal sealed class OpenGlMeshProgram : IDisposable
         _sphereTextureModeUniform = _gl.GetUniformLocation(_program, "uSphereTextureMode");
         _toonTextureUniform = _gl.GetUniformLocation(_program, "uToonTexture");
         _toonTextureEnabledUniform = _gl.GetUniformLocation(_program, "uToonTextureEnabled");
+        _colorTransformUniform = _gl.GetUniformLocation(_program, "uColorTransform");
         _edgeModelUniform = _gl.GetUniformLocation(_edgeProgram, "uModel");
         _edgeViewUniform = _gl.GetUniformLocation(_edgeProgram, "uView");
         _edgeProjectionUniform = _gl.GetUniformLocation(_edgeProgram, "uProjection");
@@ -84,6 +87,7 @@ internal sealed class OpenGlMeshProgram : IDisposable
         var lightDirection = Vector3.Normalize(context.Project.Light.Direction);
         _gl.Uniform3(_lightDirectionUniform, lightDirection);
         _gl.Uniform3(_viewPositionUniform, Vector3.Zero);
+        _gl.Uniform4(_colorTransformUniform, RenderColorTransform.Parameters(context.Project.ColorTransform));
         _gl.ActiveTexture(TextureUnit.Texture0);
         _gl.Uniform1(_textureUniform, 0);
         _gl.ActiveTexture(TextureUnit.Texture1);
@@ -335,25 +339,30 @@ internal sealed class OpenGlMeshProgram : IDisposable
         }
 
         _gl.BindVertexArray(mesh.VertexArray);
-        foreach (var batch in mesh.Mesh.Batches.Where(batch => !batch.Material.IsTransparent))
+        var batchPlan = RenderBatchOrdering.CreatePlan(mesh.Mesh, _currentViewMatrix, RequiresTransparentPass);
+        foreach (var batch in batchPlan.OpaqueBatches)
         {
-            DrawBatch(batch, passState, hasEffectProgram ? effectProgram : null);
+            DrawBatch(batch, passState, hasEffectProgram ? effectProgram : null, mesh.Mesh.EffectParameterOverrides);
         }
 
-        var transparentBatches = RenderBatchOrdering.OrderTransparentBackToFront(mesh.Mesh, _currentViewMatrix);
-        if (transparentBatches.Count > 0)
+        if (batchPlan.TransparentBatches.Count > 0)
         {
             _gl.Enable(EnableCap.Blend);
             ApplyBlendFunction(passState);
             _gl.DepthMask(false);
-            foreach (var batch in transparentBatches)
+            foreach (var batch in batchPlan.TransparentBatches)
             {
-                DrawBatch(batch, passState, hasEffectProgram ? effectProgram : null);
+                DrawBatch(batch, passState, hasEffectProgram ? effectProgram : null, mesh.Mesh.EffectParameterOverrides);
             }
         }
 
         RestoreDefaultMainPassState();
         _gl.UseProgram(_program);
+    }
+
+    private bool RequiresTransparentPass(RenderMaterial material)
+    {
+        return material.RequiresTransparentPass || _textures.HasTransparentPixels(material.TexturePath);
     }
 
     private void DrawBufferPass(OpenGlMeshBuffer mesh, RenderEffectPass pass)
@@ -370,7 +379,10 @@ internal sealed class OpenGlMeshProgram : IDisposable
 
         _gl.UseProgram(effectProgram.Program);
         SetEffectFrameUniforms(effectProgram, mesh.Mesh);
-        SetEffectMaterialUniforms(effectProgram, mesh.Mesh.Batches.FirstOrDefault()?.Material ?? DefaultBufferMaterial);
+        SetEffectMaterialUniforms(
+            effectProgram,
+            mesh.Mesh.Batches.FirstOrDefault()?.Material ?? DefaultBufferMaterial,
+            mesh.Mesh.EffectParameterOverrides);
         _gl.BindVertexArray(GetBufferPassVertexArray());
         _gl.Disable(EnableCap.CullFace);
         unsafe
@@ -382,7 +394,11 @@ internal sealed class OpenGlMeshProgram : IDisposable
         _gl.UseProgram(_program);
     }
 
-    private void DrawBatch(RenderMeshBatch batch, RenderPassState? passState, OpenGlEffectProgram? effectProgram = null)
+    private void DrawBatch(
+        RenderMeshBatch batch,
+        RenderPassState? passState,
+        OpenGlEffectProgram? effectProgram = null,
+        IReadOnlyDictionary<string, MotionEffectParameterValue>? effectParameterOverrides = null)
     {
         ApplyBatchCullState(batch.Material, passState);
         var cullFaceEnabled = IsCullFaceEnabled(batch.Material, passState);
@@ -397,7 +413,7 @@ internal sealed class OpenGlMeshProgram : IDisposable
 
         if (effectProgram is { } program)
         {
-            SetEffectMaterialUniforms(program, batch.Material);
+            SetEffectMaterialUniforms(program, batch.Material, effectParameterOverrides);
         }
         else
         {
@@ -469,6 +485,11 @@ internal sealed class OpenGlMeshProgram : IDisposable
                 continue;
             }
 
+            if (TrySetEffectOverrideUniform(uniform, mesh.EffectParameterOverrides))
+            {
+                continue;
+            }
+
             switch (uniform.Metadata.Semantic)
             {
                 case RenderEffectSemantic.World:
@@ -514,12 +535,20 @@ internal sealed class OpenGlMeshProgram : IDisposable
         }
     }
 
-    private void SetEffectMaterialUniforms(OpenGlEffectProgram program, RenderMaterial material)
+    private void SetEffectMaterialUniforms(
+        OpenGlEffectProgram program,
+        RenderMaterial material,
+        IReadOnlyDictionary<string, MotionEffectParameterValue>? effectParameterOverrides)
     {
         var nextTextureUnit = 0;
         foreach (var uniform in program.Uniforms.Values)
         {
             if (uniform.Location < 0)
+            {
+                continue;
+            }
+
+            if (TrySetEffectOverrideUniform(uniform, effectParameterOverrides))
             {
                 continue;
             }
@@ -535,7 +564,7 @@ internal sealed class OpenGlMeshProgram : IDisposable
                     else
                     {
                         var texturePath = ResolveEffectTexturePath(uniform.Metadata, material);
-                        BindEffectTexture(uniform.Location, nextTextureUnit++, texturePath);
+                        BindEffectTexture(uniform.Location, nextTextureUnit++, texturePath, uniform.Metadata.MipmapEnabled);
                     }
                     break;
                 default:
@@ -547,6 +576,35 @@ internal sealed class OpenGlMeshProgram : IDisposable
         _gl.ActiveTexture(TextureUnit.Texture0);
     }
 
+    private bool TrySetEffectOverrideUniform(
+        OpenGlEffectUniform uniform,
+        IReadOnlyDictionary<string, MotionEffectParameterValue>? effectParameterOverrides)
+    {
+        if (effectParameterOverrides is null ||
+            !effectParameterOverrides.TryGetValue(uniform.Metadata.Name, out var value))
+        {
+            return false;
+        }
+
+        switch (value)
+        {
+            case MotionEffectParameterValue.Bool boolValue:
+                _gl.Uniform1(uniform.Location, boolValue.Value ? 1 : 0);
+                return true;
+            case MotionEffectParameterValue.Int intValue:
+                _gl.Uniform1(uniform.Location, intValue.Value);
+                return true;
+            case MotionEffectParameterValue.Float floatValue:
+                _gl.Uniform1(uniform.Location, floatValue.Value);
+                return true;
+            case MotionEffectParameterValue.Vector4 vectorValue:
+                _gl.Uniform4(uniform.Location, vectorValue.Value);
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private void SetEffectScalarMaterialUniform(OpenGlEffectUniform uniform, RenderMaterial material)
     {
         switch (uniform.Metadata.Semantic)
@@ -555,22 +613,22 @@ internal sealed class OpenGlMeshProgram : IDisposable
                 _gl.Uniform4(uniform.Location, material.Diffuse);
                 break;
             case RenderEffectSemantic.MaterialTexture:
-                BindEffectTexture(uniform.Location, 0, material.TexturePath);
+                BindEffectTexture(uniform.Location, 0, material.TexturePath, uniform.Metadata.MipmapEnabled);
                 break;
             case RenderEffectSemantic.MaterialSphereMap:
-                BindEffectTexture(uniform.Location, 1, material.SphereTexturePath);
+                BindEffectTexture(uniform.Location, 1, material.SphereTexturePath, uniform.Metadata.MipmapEnabled);
                 break;
             case RenderEffectSemantic.MaterialToonTexture:
-                BindEffectTexture(uniform.Location, 2, material.ToonTexturePath);
+                BindEffectTexture(uniform.Location, 2, material.ToonTexturePath, uniform.Metadata.MipmapEnabled);
                 break;
         }
     }
 
-    private void BindEffectTexture(int uniformLocation, int textureUnitIndex, string? texturePath)
+    private void BindEffectTexture(int uniformLocation, int textureUnitIndex, string? texturePath, bool mipmapEnabled)
     {
         var unit = TextureUnit.Texture0 + textureUnitIndex;
         _gl.ActiveTexture(unit);
-        _gl.BindTexture(TextureTarget.Texture2D, _textures.GetTexture(texturePath));
+        _gl.BindTexture(TextureTarget.Texture2D, _textures.GetTexture(texturePath, mipmapEnabled));
         _gl.Uniform1(uniformLocation, textureUnitIndex);
     }
 
@@ -990,8 +1048,24 @@ internal sealed class OpenGlMeshProgram : IDisposable
         uniform int uSphereTextureMode;
         uniform sampler2D uToonTexture;
         uniform int uToonTextureEnabled;
+        uniform vec4 uColorTransform;
 
         out vec4 FragColor;
+
+        vec3 applyColorTransform(vec3 color)
+        {
+            float brightness = uColorTransform.x;
+            float contrast = uColorTransform.y;
+            float saturation = uColorTransform.z;
+            float gammaValue = max(uColorTransform.w, 0.01);
+            color += vec3(brightness);
+            color = (color - vec3(0.5)) * contrast + vec3(0.5);
+            float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+            color = mix(vec3(luma), color, saturation);
+            color = clamp(color, vec3(0.0), vec3(1.0));
+            color = pow(color, vec3(1.0 / gammaValue));
+            return clamp(color, vec3(0.0), vec3(1.0));
+        }
 
         void main()
         {
@@ -1019,6 +1093,7 @@ internal sealed class OpenGlMeshProgram : IDisposable
                 color *= toon.rgb;
             }
 
+            color = applyColorTransform(color);
             FragColor = vec4(color, baseColor.a);
         }
         """;

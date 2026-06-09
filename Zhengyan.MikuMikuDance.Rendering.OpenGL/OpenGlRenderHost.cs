@@ -87,6 +87,12 @@ public sealed class OpenGlRenderHost : IRenderHost
         {
             _renderer.Load(deviceInfo);
         }
+
+        if (_hostOptions.CaptureAndClose)
+        {
+            _project.Capture.Request();
+        }
+
         OnFramebufferResize(_window.FramebufferSize);
     }
 
@@ -102,6 +108,33 @@ public sealed class OpenGlRenderHost : IRenderHost
         _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
         var size = _window.FramebufferSize;
         _renderer.Render(new RenderFrameContext(_project, size.X, size.Y, deltaTime));
+        CaptureFrameIfRequested(size.X, size.Y);
+        if (_hostOptions.CaptureAndClose && _project.Capture.LastFrame is not null)
+        {
+            _window.Close();
+        }
+    }
+
+    private unsafe void CaptureFrameIfRequested(int width, int height)
+    {
+        if (_gl is null || !_project.Capture.ConsumeRequest() || width <= 0 || height <= 0)
+        {
+            return;
+        }
+
+        var byteLength = checked(width * height * RenderCapture.RgbaBytesPerPixel);
+        var bottomLeftRows = new byte[byteLength];
+        fixed (byte* pixels = bottomLeftRows)
+        {
+            _gl.ReadPixels(0, 0, (uint)width, (uint)height, PixelFormat.Rgba, PixelType.UnsignedByte, pixels);
+        }
+
+        var topLeftRows = RenderCapture.FlipRgbaRows(bottomLeftRows, width, height);
+        _project.Capture.Complete(new RenderCaptureFrame(
+            width,
+            height,
+            DateTimeOffset.UtcNow,
+            topLeftRows));
     }
 
     private void OnFramebufferResize(Vector2D<int> size)

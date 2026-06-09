@@ -13,6 +13,7 @@ public sealed class AnimatedModelRenderer : IRenderer, IOpenGlRenderer
     private readonly AnimationPlaybackClock _clock;
     private readonly string? _textureBaseDirectory;
     private OpenGlMeshProgram? _program;
+    private OpenGlBackgroundImagePass? _backgroundImagePass;
     private OpenGlMeshBuffer? _mesh;
     private int _lastFrameIndex = -1;
 
@@ -40,6 +41,7 @@ public sealed class AnimatedModelRenderer : IRenderer, IOpenGlRenderer
     public void Load(GL gl, RenderDeviceInfo deviceInfo)
     {
         _program = new OpenGlMeshProgram(gl, _textureBaseDirectory);
+        _backgroundImagePass = new OpenGlBackgroundImagePass(gl, _textureBaseDirectory);
         var mesh = CreateMesh(0);
         if (mesh.Vertices.Count > 0 && mesh.Indices.Count > 0)
         {
@@ -72,6 +74,7 @@ public sealed class AnimatedModelRenderer : IRenderer, IOpenGlRenderer
             return;
         }
 
+        _backgroundImagePass?.Draw(context);
         _program.Use(context);
         _program.DrawScene([_mesh]);
         _program.End();
@@ -81,6 +84,8 @@ public sealed class AnimatedModelRenderer : IRenderer, IOpenGlRenderer
     {
         _mesh?.Dispose();
         _mesh = null;
+        _backgroundImagePass?.Dispose();
+        _backgroundImagePass = null;
         _program?.Dispose();
         _program = null;
     }

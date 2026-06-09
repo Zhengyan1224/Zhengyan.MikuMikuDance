@@ -13,7 +13,8 @@ public sealed class SceneBackgroundTests
             VideoScale = float.NegativeInfinity,
             VideoFrameTime = TimeSpan.FromSeconds(-1),
             ImageEnabled = true,
-            ImageScale = float.NaN
+            ImageScale = float.NaN,
+            ImageOpacity = float.PositiveInfinity
         };
 
         background.Normalize();
@@ -23,6 +24,7 @@ public sealed class SceneBackgroundTests
         Assert.Equal(TimeSpan.Zero, background.VideoFrameTime);
         Assert.False(background.ImageEnabled);
         Assert.Equal(1f, background.ImageScale);
+        Assert.Equal(1f, background.ImageOpacity);
     }
 
     [Fact]
@@ -57,7 +59,9 @@ public sealed class SceneBackgroundTests
             ImageEnabled = true,
             ImageOffsetX = 12,
             ImageOffsetY = -4,
-            ImageScale = 2f
+            ImageScale = 2f,
+            ImageOpacity = 0.25f,
+            ImageLayoutMode = BackgroundImageLayoutMode.Fill
         };
 
         background.ClearImage();
@@ -67,5 +71,27 @@ public sealed class SceneBackgroundTests
         Assert.Equal(0, background.ImageOffsetX);
         Assert.Equal(0, background.ImageOffsetY);
         Assert.Equal(1f, background.ImageScale);
+        Assert.Equal(1f, background.ImageOpacity);
+        Assert.Equal(BackgroundImageLayoutMode.Fit, background.ImageLayoutMode);
+    }
+
+    [Fact]
+    public void NormalizeClampsImageOpacity()
+    {
+        var background = new SceneBackground
+        {
+            ImageSource = new Uri("background.png", UriKind.Relative),
+            ImageEnabled = true,
+            ImageOpacity = 2f
+        };
+
+        background.Normalize();
+
+        Assert.Equal(1f, background.ImageOpacity);
+
+        background.ImageOpacity = -1f;
+        background.Normalize();
+
+        Assert.Equal(0f, background.ImageOpacity);
     }
 }

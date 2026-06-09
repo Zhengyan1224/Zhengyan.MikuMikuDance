@@ -22,6 +22,10 @@ public sealed class MmdProject
 
     public SceneBackground Background { get; } = new();
 
+    public SceneColorTransform ColorTransform { get; } = new();
+
+    public SceneCaptureState Capture { get; } = new();
+
     public IReadOnlyList<MmdModel> Models => new ReadOnlyCollection<MmdModel>(_models);
 
     public IReadOnlyList<ModelInstance> ModelInstances => new ReadOnlyCollection<ModelInstance>(_modelInstances);

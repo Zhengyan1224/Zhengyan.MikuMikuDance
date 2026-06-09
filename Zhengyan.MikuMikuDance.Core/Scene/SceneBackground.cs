@@ -1,5 +1,11 @@
 namespace Zhengyan.MikuMikuDance.Core.Scene;
 
+public enum BackgroundImageLayoutMode
+{
+    Fit,
+    Fill
+}
+
 public sealed class SceneBackground
 {
     public Uri? VideoSource { get; set; }
@@ -24,6 +30,10 @@ public sealed class SceneBackground
 
     public float ImageScale { get; set; } = 1f;
 
+    public float ImageOpacity { get; set; } = 1f;
+
+    public BackgroundImageLayoutMode ImageLayoutMode { get; set; } = BackgroundImageLayoutMode.Fit;
+
     public void ClearVideo()
     {
         VideoSource = null;
@@ -41,6 +51,8 @@ public sealed class SceneBackground
         ImageOffsetX = 0;
         ImageOffsetY = 0;
         ImageScale = 1f;
+        ImageOpacity = 1f;
+        ImageLayoutMode = BackgroundImageLayoutMode.Fit;
     }
 
     public void Normalize()
@@ -64,6 +76,13 @@ public sealed class SceneBackground
         {
             ImageScale = 1f;
         }
+
+        if (float.IsNaN(ImageOpacity) || float.IsInfinity(ImageOpacity))
+        {
+            ImageOpacity = 1f;
+        }
+
+        ImageOpacity = Math.Clamp(ImageOpacity, 0f, 1f);
 
         if (ImageSource is null)
         {

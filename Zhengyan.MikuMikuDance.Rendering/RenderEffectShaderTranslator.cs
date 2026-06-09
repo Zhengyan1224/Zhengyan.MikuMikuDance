@@ -231,6 +231,7 @@ public static partial class RenderEffectShaderTranslator
                 var textureSourceName = uniform.TextureSourceName;
                 var semantic = parameter?.Semantic ?? RenderEffectSemantic.Unknown;
                 var resourceName = parameter?.ResourceName;
+                var mipmapEnabled = parameter?.MipmapEnabled ?? false;
                 if (!string.IsNullOrWhiteSpace(textureSourceName) &&
                     byName.TryGetValue(textureSourceName, out var textureParameter))
                 {
@@ -238,6 +239,7 @@ public static partial class RenderEffectShaderTranslator
                         ? textureParameter.Semantic
                         : semantic;
                     resourceName = textureParameter.ResourceName ?? resourceName;
+                    mipmapEnabled = textureParameter.MipmapEnabled || mipmapEnabled;
                 }
 
                 return new RenderEffectShaderUniform(
@@ -246,7 +248,8 @@ public static partial class RenderEffectShaderTranslator
                     ToKind(uniform.Type),
                     semantic,
                     textureSourceName,
-                    resourceName);
+                    resourceName,
+                    mipmapEnabled);
             })
             .ToArray();
     }

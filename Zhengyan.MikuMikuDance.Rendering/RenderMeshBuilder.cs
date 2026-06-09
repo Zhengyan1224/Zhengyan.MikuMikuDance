@@ -1,4 +1,5 @@
 using System.Numerics;
+using Zhengyan.MikuMikuDance.Core.Animation;
 using Zhengyan.MikuMikuDance.Core.Modeling;
 using Zhengyan.MikuMikuDance.Core.Scene;
 
@@ -27,7 +28,8 @@ public static class RenderMeshBuilder
             return FromModel(instance.Model) with
             {
                 Name = string.IsNullOrWhiteSpace(instance.Name) ? instance.Model.Name : instance.Name,
-                WorldTransform = instance.Transform.CreateMatrix()
+                WorldTransform = instance.Transform.CreateMatrix(),
+                EffectParameterOverrides = CopyEffectOverrides(instance.EffectParameterOverrides)
             };
         }
 
@@ -35,7 +37,8 @@ public static class RenderMeshBuilder
         return FromModel(instance.Model, ModelPose.BindPose(instance.Model), morphs) with
         {
             Name = string.IsNullOrWhiteSpace(instance.Name) ? instance.Model.Name : instance.Name,
-            WorldTransform = instance.Transform.CreateMatrix()
+            WorldTransform = instance.Transform.CreateMatrix(),
+            EffectParameterOverrides = CopyEffectOverrides(instance.EffectParameterOverrides)
         };
     }
 
@@ -71,7 +74,8 @@ public static class RenderMeshBuilder
         return FromModel(instance.Model, pose, morphs) with
         {
             Name = string.IsNullOrWhiteSpace(instance.Name) ? instance.Model.Name : instance.Name,
-            WorldTransform = instance.Transform.CreateMatrix()
+            WorldTransform = instance.Transform.CreateMatrix(),
+            EffectParameterOverrides = CopyEffectOverrides(instance.EffectParameterOverrides)
         };
     }
 
@@ -87,7 +91,8 @@ public static class RenderMeshBuilder
         ArgumentNullException.ThrowIfNull(accessory);
         return document.Meshes.Select(mesh => FromAccessoryMesh(document.SourceName, mesh) with
         {
-            WorldTransform = accessory.CreateWorldMatrix()
+            WorldTransform = accessory.CreateWorldMatrix(),
+            EffectParameterOverrides = CopyEffectOverrides(accessory.EffectParameterOverrides)
         }).ToArray();
     }
 
@@ -239,7 +244,7 @@ public static class RenderMeshBuilder
             return model.SharedToonTextures[material.ToonTextureIndex];
         }
 
-        return material.ToonTextureIndex < 10 ? $"toon{material.ToonTextureIndex + 1:D2}.bmp" : null;
+        return RenderToonResources.ResolveSharedToonUri(material.ToonTextureIndex);
     }
 
     private static SphereTextureBlendMode ToRenderSphereMode(SphereTextureMode mode)
@@ -251,5 +256,13 @@ public static class RenderMeshBuilder
             SphereTextureMode.SubTexture => SphereTextureBlendMode.SubTexture,
             _ => SphereTextureBlendMode.Disabled
         };
+    }
+
+    private static IReadOnlyDictionary<string, MotionEffectParameterValue> CopyEffectOverrides(
+        EffectParameterOverrideSet overrides)
+    {
+        return overrides.Count == 0
+            ? new Dictionary<string, MotionEffectParameterValue>(0, StringComparer.Ordinal)
+            : overrides.Values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
     }
 }

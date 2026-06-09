@@ -30,14 +30,16 @@ public sealed record RenderEffectParameter(
     IReadOnlyDictionary<string, EffectValue> Annotations,
     string? ResourceName = null,
     string? ResourceType = null,
-    RenderEffectOffscreenTarget? OffscreenTarget = null);
+    RenderEffectOffscreenTarget? OffscreenTarget = null,
+    bool MipmapEnabled = false);
 
 public sealed record RenderEffectOffscreenTarget(
     string Name,
     string Description,
     Vector4 ClearColor,
     float ClearDepth,
-    IReadOnlyList<RenderEffectOffscreenDefaultEffect> DefaultEffects)
+    IReadOnlyList<RenderEffectOffscreenDefaultEffect> DefaultEffects,
+    bool MipmapEnabled = false)
 {
     public RenderEffectOffscreenDrawPlan CreateDrawPlan(string ownerDrawableName, IEnumerable<string> drawableNames)
     {
@@ -83,7 +85,8 @@ public sealed record RenderEffectShaderUniform(
     RenderEffectParameterKind Kind,
     RenderEffectSemantic Semantic,
     string? TextureSourceName = null,
-    string? ResourceName = null);
+    string? ResourceName = null,
+    bool MipmapEnabled = false);
 
 public sealed record RenderPassState(
     IReadOnlyDictionary<string, string> RawStates,
@@ -289,7 +292,8 @@ public static partial class RenderEffectCompiler
             annotations,
             AnnotationString(annotations, "ResourceName"),
             AnnotationString(annotations, "ResourceType"),
-            BuildOffscreenTarget(parameter.Name, semantic, annotations));
+            BuildOffscreenTarget(parameter.Name, semantic, annotations),
+            AnnotationMipmapEnabled(annotations));
     }
 
     private static RenderEffectOffscreenTarget? BuildOffscreenTarget(
@@ -307,7 +311,8 @@ public static partial class RenderEffectCompiler
             AnnotationString(annotations, "Description") ?? string.Empty,
             AnnotationVector(annotations, "ClearColor") ?? new Vector4(0, 0, 0, 1),
             Math.Clamp(AnnotationFloat(annotations, "ClearDepth") ?? 1f, 0f, 1f),
-            ParseOffscreenDefaultEffects(AnnotationString(annotations, "DefaultEffect")));
+            ParseOffscreenDefaultEffects(AnnotationString(annotations, "DefaultEffect")),
+            AnnotationMipmapEnabled(annotations));
     }
 
     private static RenderEffectTechnique ToTechnique(
@@ -611,6 +616,61 @@ public static partial class RenderEffectCompiler
                 _ => null
             }
             : null;
+    }
+
+    private static bool AnnotationMipmapEnabled(IReadOnlyDictionary<string, EffectValue> annotations)
+    {
+        return AnnotationBool(annotations, "Mipmap", "MipMap", "GenerateMipmap", "GenerateMipMap");
+    }
+
+    private static bool AnnotationBool(IReadOnlyDictionary<string, EffectValue> annotations, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (annotations.TryGetValue(name, out var value) &&
+                TryValueToBool(value, out var result))
+            {
+                return result;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryValueToBool(EffectValue value, out bool result)
+    {
+        switch (value)
+        {
+            case EffectValue.Bool boolValue:
+                result = boolValue.Value;
+                return true;
+            case EffectValue.Int intValue:
+                result = intValue.Value != 0;
+                return true;
+            case EffectValue.Float floatValue:
+                result = MathF.Abs(floatValue.Value) > float.Epsilon;
+                return true;
+            case EffectValue.String stringValue:
+                return TryStringToBool(stringValue.Value, out result);
+            case EffectValue.Raw rawValue:
+                return TryStringToBool(rawValue.Value, out result);
+            default:
+                result = false;
+                return false;
+        }
+    }
+
+    private static bool TryStringToBool(string value, out bool result)
+    {
+        var parsed = ParseBool(value);
+        if (parsed.HasValue)
+        {
+            result = parsed.Value;
+            return true;
+        }
+
+        result = false;
+        return false;
     }
 
     private static IReadOnlyList<RenderEffectOffscreenDefaultEffect> ParseOffscreenDefaultEffects(string? value)

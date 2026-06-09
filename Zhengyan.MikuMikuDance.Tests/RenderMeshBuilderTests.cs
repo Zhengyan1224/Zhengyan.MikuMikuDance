@@ -1,4 +1,5 @@
 using System.Numerics;
+using Zhengyan.MikuMikuDance.Core.Animation;
 using Zhengyan.MikuMikuDance.Core.Modeling;
 using Zhengyan.MikuMikuDance.Core.Scene;
 using Zhengyan.MikuMikuDance.Rendering;
@@ -247,6 +248,62 @@ public sealed class RenderMeshBuilderTests
     }
 
     [Fact]
+    public void ResolvesMissingSharedToonToBuiltInResource()
+    {
+        var model = new MmdModel(ModelFormat.Pmd) { Name = "toon" };
+        model.AddVertex(Vertex(0, 0, 0));
+        model.AddVertex(Vertex(1, 0, 0));
+        model.AddVertex(Vertex(0, 1, 0));
+        model.AddIndex(0);
+        model.AddIndex(1);
+        model.AddIndex(2);
+        model.AddMaterial(new Material(
+            "mat",
+            string.Empty,
+            Vector4.One,
+            Vector3.Zero,
+            0,
+            Vector3.Zero,
+            false,
+            true,
+            true,
+            true,
+            false,
+            Vector4.Zero,
+            1,
+            -1,
+            -1,
+            SphereTextureMode.Disabled,
+            0,
+            true,
+            3,
+            string.Empty));
+
+        var mesh = RenderMeshBuilder.FromModel(model);
+
+        Assert.Equal("@builtin/toon01", mesh.Batches[0].Material.ToonTexturePath);
+    }
+
+    [Fact]
+    public void ProvidesBuiltInSharedToonResourceData()
+    {
+        Assert.Equal("@builtin/toon10", RenderToonResources.ResolveSharedToonUri(9));
+        Assert.True(RenderToonResources.TryGetSharedToonIndex("toon03.bmp", out var legacyIndex));
+        Assert.Equal(2, legacyIndex);
+        Assert.True(RenderToonResources.TryGetSharedToonIndex("@builtin/toon04", out var builtInIndex));
+        Assert.Equal(3, builtInIndex);
+
+        var resource = RenderToonResources.GetSharedToon(0);
+
+        Assert.Equal("toon01.bmp", resource.Name);
+        Assert.Equal(RenderToonResources.Width, resource.Width);
+        Assert.Equal(RenderToonResources.Height, resource.Height);
+        Assert.Equal(resource.Width * resource.Height * 4, resource.ByteLength);
+        Assert.Equal(255, resource.RgbaPixels[3]);
+        Assert.NotEqual(resource.RgbaPixels[0], resource.RgbaPixels[^4]);
+    }
+
+    [Fact]
     public void BuildsModelMeshWithInstanceTransform()
     {
         var project = new MmdProject();
@@ -269,6 +326,28 @@ public sealed class RenderMeshBuilderTests
         Assert.Single(project.ModelInstances);
         Assert.Equal("instance", mesh.Name);
         Assert.Equal(new Vector3(4, 5, 6), transformed);
+    }
+
+    [Fact]
+    public void CopiesModelEffectParameterOverridesToRenderMesh()
+    {
+        var project = new MmdProject();
+        var model = new MmdModel(ModelFormat.Pmx) { Name = "model" };
+        model.AddVertex(Vertex(1, 0, 0));
+        model.AddVertex(Vertex(0, 1, 0));
+        model.AddVertex(Vertex(0, 0, 1));
+        model.AddIndex(0);
+        model.AddIndex(1);
+        model.AddIndex(2);
+
+        var instance = project.AddModel(model);
+        instance.EffectParameterOverrides.SetFloat("AlphaScale", 0.5f);
+        var mesh = RenderMeshBuilder.FromModel(instance);
+
+        instance.EffectParameterOverrides.SetFloat("AlphaScale", 1f);
+
+        Assert.True(mesh.EffectParameterOverrides.TryGetValue("AlphaScale", out var value));
+        Assert.Equal(0.5f, Assert.IsType<MotionEffectParameterValue.Float>(value).Value, precision: 3);
     }
 
     [Fact]
@@ -345,6 +424,31 @@ public sealed class RenderMeshBuilderTests
         var transformed = Vector3.Transform(Vector3.One, mesh.WorldTransform);
 
         Assert.Equal(new Vector3(4, 5, 6), transformed);
+    }
+
+    [Fact]
+    public void CopiesAccessoryEffectParameterOverridesToRenderMesh()
+    {
+        var accessoryMesh = new AccessoryMesh(
+            "triangle",
+            [
+                new Vector3(0, 0, 0),
+                new Vector3(1, 0, 0),
+                new Vector3(0, 1, 0)
+            ],
+            [new AccessoryFace([0, 1, 2])],
+            [],
+            [],
+            [],
+            []);
+        var document = new AccessoryMeshDocument("accessory.x", [accessoryMesh]);
+        var accessory = new Accessory("accessory");
+        accessory.EffectParameterOverrides.SetVector4("TintColor", new Vector4(1, 0.5f, 0.25f, 1));
+
+        var mesh = RenderMeshBuilder.FromAccessory(document, accessory)[0];
+
+        Assert.True(mesh.EffectParameterOverrides.TryGetValue("TintColor", out var value));
+        Assert.Equal(new Vector4(1, 0.5f, 0.25f, 1), Assert.IsType<MotionEffectParameterValue.Vector4>(value).Value);
     }
 
     private static Vertex Vertex(float x, float y, float z)

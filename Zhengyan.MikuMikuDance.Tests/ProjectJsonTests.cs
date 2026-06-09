@@ -29,6 +29,10 @@ public sealed class ProjectJsonTests
         project.Camera.ParentBoneName = "center";
         project.Light.Color = new Vector3(0.3f, 0.4f, 0.5f);
         project.Light.Direction = new Vector3(-1, -2, -3);
+        project.ColorTransform.Brightness = 0.1f;
+        project.ColorTransform.Contrast = 1.25f;
+        project.ColorTransform.Saturation = 0.75f;
+        project.ColorTransform.Gamma = 2.2f;
         project.Background.VideoSource = new Uri(@"videos\background.avi", UriKind.Relative);
         project.Background.VideoEnabled = true;
         project.Background.VideoOffsetX = -20;
@@ -39,6 +43,8 @@ public sealed class ProjectJsonTests
         project.Background.ImageOffsetX = 12;
         project.Background.ImageOffsetY = -8;
         project.Background.ImageScale = 1.25f;
+        project.Background.ImageOpacity = 0.6f;
+        project.Background.ImageLayoutMode = BackgroundImageLayoutMode.Fill;
 
         var model = new MmdModel(ModelFormat.Pmx)
         {
@@ -68,6 +74,9 @@ public sealed class ProjectJsonTests
         instance.Transform.Rotation = new Vector3(0.4f, 0.5f, 0.6f);
         instance.Transform.Scale = new Vector3(1.5f);
         instance.SetMorphWeight("smile", 0.75f);
+        instance.EffectParameterOverrides.SetBool("UseShadow", true);
+        instance.EffectParameterOverrides.SetFloat("AlphaScale", 0.6f);
+        instance.EffectParameterOverrides.SetVector4("TintColor", new Vector4(1, 0.5f, 0.25f, 1));
         Assert.True(ModelOutsideParentBindingEditor.TrySetParent(
             instance,
             project,
@@ -85,6 +94,7 @@ public sealed class ProjectJsonTests
         };
         accessory.Transform.Translation = new Vector3(7, 8, 9);
         accessory.Transform.Scale = new Vector3(2);
+        accessory.EffectParameterOverrides.SetInt("Mode", 3);
         project.AddAccessory(accessory);
 
         var motion = new Motion("Motion", MotionFormat.Vmd)
@@ -110,6 +120,10 @@ public sealed class ProjectJsonTests
         Assert.Equal("MikuInstance", decoded.Camera.ParentModelName);
         Assert.Equal("center", decoded.Camera.ParentBoneName);
         Assert.Equal(new Vector3(0.3f, 0.4f, 0.5f), decoded.Light.Color);
+        Assert.Equal(0.1f, decoded.ColorTransform.Brightness, precision: 3);
+        Assert.Equal(1.25f, decoded.ColorTransform.Contrast, precision: 3);
+        Assert.Equal(0.75f, decoded.ColorTransform.Saturation, precision: 3);
+        Assert.Equal(2.2f, decoded.ColorTransform.Gamma, precision: 3);
         Assert.True(decoded.Background.VideoEnabled);
         Assert.Equal(@"videos\background.avi", decoded.Background.VideoSource!.ToString());
         Assert.Equal(-20, decoded.Background.VideoOffsetX);
@@ -120,11 +134,19 @@ public sealed class ProjectJsonTests
         Assert.Equal(12, decoded.Background.ImageOffsetX);
         Assert.Equal(-8, decoded.Background.ImageOffsetY);
         Assert.Equal(1.25f, decoded.Background.ImageScale, precision: 3);
+        Assert.Equal(0.6f, decoded.Background.ImageOpacity, precision: 3);
+        Assert.Equal(BackgroundImageLayoutMode.Fill, decoded.Background.ImageLayoutMode);
         Assert.Single(decoded.ModelInstances);
         Assert.Equal("MikuInstance", decoded.ModelInstances[0].Name);
         Assert.False(decoded.ModelInstances[0].Visible);
         Assert.Equal(new Vector3(4, 5, 6), decoded.ModelInstances[0].Transform.Translation);
         Assert.Equal(0.75f, decoded.ModelInstances[0].GetMorphWeight("smile"), precision: 3);
+        Assert.True(decoded.ModelInstances[0].EffectParameterOverrides.TryGetValue("UseShadow", out var useShadow));
+        Assert.True(Assert.IsType<MotionEffectParameterValue.Bool>(useShadow).Value);
+        Assert.True(decoded.ModelInstances[0].EffectParameterOverrides.TryGetValue("AlphaScale", out var alphaScale));
+        Assert.Equal(0.6f, Assert.IsType<MotionEffectParameterValue.Float>(alphaScale).Value, precision: 3);
+        Assert.True(decoded.ModelInstances[0].EffectParameterOverrides.TryGetValue("TintColor", out var tintColor));
+        Assert.Equal(new Vector4(1, 0.5f, 0.25f, 1), Assert.IsType<MotionEffectParameterValue.Vector4>(tintColor).Value);
         var outsideParent = decoded.ModelInstances[0].GetOutsideParentBinding("center");
         Assert.NotNull(outsideParent);
         Assert.Equal("MikuInstance", outsideParent.ParentModelName);
@@ -134,6 +156,8 @@ public sealed class ProjectJsonTests
         Assert.Equal("stage", decoded.Accessories[0].Name);
         Assert.Equal("center", decoded.Accessories[0].ParentBoneName);
         Assert.Equal(0.25f, decoded.Accessories[0].Opacity, precision: 3);
+        Assert.True(decoded.Accessories[0].EffectParameterOverrides.TryGetValue("Mode", out var mode));
+        Assert.Equal(3, Assert.IsType<MotionEffectParameterValue.Int>(mode).Value);
         Assert.Single(decoded.Motions);
         Assert.Equal("Motion", decoded.Motions[0].Name);
         Assert.Equal(MotionFormat.Vmd, decoded.Motions[0].Format);

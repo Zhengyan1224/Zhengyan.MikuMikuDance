@@ -1,3 +1,4 @@
+using Zhengyan.MikuMikuDance.Core.Effects;
 using Zhengyan.MikuMikuDance.Rendering;
 using Zhengyan.MikuMikuDance.Rendering.OpenGL;
 
@@ -43,6 +44,46 @@ public sealed class EffectSourceCacheTests
 
             Assert.True(cache.TryGetEffect(@"effects\main.fx", out var cachedEffect));
             Assert.Same(effect, cachedEffect);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ReloadsEffectAndRefreshesDiagnostics()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var effectPath = Path.Combine(directory, "main.fx");
+            File.WriteAllText(effectPath, """
+                float UnknownParameter : UNKNOWNSEMANTIC = 1;
+                technique Main {
+                  pass P0 {
+                  }
+                }
+                """);
+            var cache = new OpenGlEffectSourceCache(directory);
+
+            Assert.True(cache.TryGetEffect("main.fx", out var first));
+            Assert.Contains(cache.GetDiagnostics("main.fx"), diagnostic => diagnostic.Code == "MME0102");
+
+            File.WriteAllText(effectPath, """
+                float KnownParameter : DIFFUSE = 1;
+                technique Main {
+                  pass P0 {
+                  }
+                }
+                """);
+            Assert.True(cache.TryGetEffect("main.fx", out var cached));
+            Assert.Same(first, cached);
+            Assert.Contains(cache.GetDiagnostics("main.fx"), diagnostic => diagnostic.Code == "MME0102");
+
+            Assert.True(cache.ReloadEffect("main.fx", out var reloaded));
+            Assert.NotSame(first, reloaded);
+            Assert.DoesNotContain(cache.GetDiagnostics("main.fx"), diagnostic => diagnostic.Code == "MME0102");
         }
         finally
         {
@@ -100,11 +141,74 @@ public sealed class EffectSourceCacheTests
             Assert.False(cache.TryGetEffect("missing.fx", out _));
             Assert.False(cache.TryGetEffect("hide", out _));
             Assert.False(cache.TryGetEffect("", out _));
+            Assert.Contains(cache.GetDiagnostics("missing.fx"), diagnostic =>
+                diagnostic.Severity == RenderEffectDiagnosticSeverity.Error &&
+                diagnostic.Code == "MME1001");
+            Assert.Contains(cache.GetDiagnostics("hide"), diagnostic =>
+                diagnostic.Severity == RenderEffectDiagnosticSeverity.Error &&
+                diagnostic.Code == "MME1000");
         }
         finally
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    [Fact]
+    public void ReportsMalformedEffectStructureDiagnostics()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "invalid.fx"), "technique Main { pass P0 {");
+            var cache = new OpenGlEffectSourceCache(directory);
+
+            Assert.True(cache.TryGetEffect("invalid.fx", out var effect));
+
+            Assert.Empty(effect.Techniques);
+            Assert.Contains(cache.GetDiagnostics("invalid.fx"), diagnostic =>
+                diagnostic.Severity == RenderEffectDiagnosticSeverity.Error &&
+                diagnostic.Code == "MME0001");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AnalyzesCompiledEffectStructureDiagnostics()
+    {
+        var effect = new RenderEffect(
+            "diagnostic.fx",
+            [
+                new RenderEffectParameter(
+                    "Broken",
+                    "unsupportedType",
+                    RenderEffectParameterKind.Unknown,
+                    RenderEffectSemantic.Unknown,
+                    "UNKNOWNSEMANTIC",
+                    null,
+                    new Dictionary<string, EffectValue>(StringComparer.Ordinal))
+            ],
+            [],
+            new RenderEffectScriptMetadata(
+                RenderEffectScriptClass.SceneObject,
+                RenderEffectScriptOrder.Standard,
+                "color",
+                []));
+
+        var diagnostics = RenderEffectDiagnostics.Analyze(effect);
+
+        Assert.Contains(diagnostics, diagnostic =>
+            diagnostic.Severity == RenderEffectDiagnosticSeverity.Error &&
+            diagnostic.Code == "MME0001");
+        Assert.Contains(diagnostics, diagnostic =>
+            diagnostic.Severity == RenderEffectDiagnosticSeverity.Warning &&
+            diagnostic.Code == "MME0101");
+        Assert.Contains(diagnostics, diagnostic =>
+            diagnostic.Severity == RenderEffectDiagnosticSeverity.Warning &&
+            diagnostic.Code == "MME0102");
     }
 
     private static string CreateTemporaryDirectory()

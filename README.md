@@ -13,8 +13,15 @@ Zhengyan.MikuMikuDance 是一个使用 C#、.NET 10 和 Silk.NET OpenGL 构建�
 - ASCII DirectX `.x` 附件读取与写入
 - MME `.fx` 参数、技术、pass、脚本、render target 和 offscreen metadata 解析
 - 基础 HLSL 到 GLSL 翻译和 OpenGL effect shader program cache
+- MME mipmap annotation metadata 与 OpenGL texture/render-target mipmap generation 基础
+- MME effect bool/int/float/vector4 参数覆盖、项目持久化和参数面板基础编辑
+- MME effect source cache reload/invalidate 与基础 diagnostics
 - CPU skinning、Morph 评估、CCD IK、相机/灯光/可见性采样
-- OpenGL 模型/附件预览、纹理、toon、sphere、edge、透明排序和 ground shadow
+- OpenGL 模型/附件预览、纹理、toon、sphere、edge、透明/贴图 alpha 分离排序和 ground shadow
+- 内置 shared toon 资源 URI、默认 toon 解析和 OpenGL 程序生成 toon 纹理基础
+- OpenGL 背景图片 pass：真实纹理加载、fit/fill 布局、缩放/偏移、透明度和 file URI/相对路径解析
+- 基础 scene color transform：brightness、contrast、saturation、gamma
+- OpenGL 帧捕获请求、RGBA 像素读取与 PNG 图片导出命令基础
 - 可撤销编辑命令基础：undo/redo、批量命令、motion/model snapshot、关键帧增删改、时间轴插入/删除、复制/粘贴/镜像粘贴
 
 ## 技术栈
@@ -106,6 +113,13 @@ dotnet run --project .\Zhengyan.MikuMikuDance.App -- --export-pmm path\to\scene.
 dotnet run --project .\Zhengyan.MikuMikuDance.App -- --export-pmm path\to\scene.nma path\to\scene.pmm
 ```
 
+导出单张 PNG 图片：
+
+```powershell
+dotnet run --project .\Zhengyan.MikuMikuDance.App -- --export-image path\to\model.pmx path\to\frame.png 1280 720
+dotnet run --project .\Zhengyan.MikuMikuDance.App -- --export-image path\to\scene.zmm path\to\frame.png
+```
+
 计算指定帧姿态：
 
 ```powershell
@@ -128,10 +142,10 @@ Zhengyan.MikuMikuDance.Rendering.OpenGL
   Silk.NET OpenGL 渲染器、纹理缓存、effect program cache、render target 管理
 
 Zhengyan.MikuMikuDance.UI.ImGui
-  ImGui.NET 编辑器壳、Silk.NET OpenGL/GLFW UI host、基础菜单、面板、偏好持久化、视口背景图片/视频占位层、视口网格和 pointed debug overlay、视口拾取选择、模型/附件/骨骼/Morph 活动对象选择、selection/pointed overlay、相机导航、Morph 滑块编辑、附件/相机/模型 outside parent 绑定 UI、draw order/transform order 编辑和基础快捷键命令路由
+  ImGui.NET 编辑器壳、Silk.NET OpenGL/GLFW UI host、基础菜单、面板、偏好持久化、视口背景图片/视频占位层、视口网格和 pointed debug overlay、视口拾取选择、模型/附件/骨骼/Morph 活动对象选择、selection/pointed overlay、相机导航、scene color transform 参数、Morph 滑块编辑、附件/相机/模型 outside parent 绑定 UI、draw order/transform order 编辑和基础快捷键命令路由
 
 Zhengyan.MikuMikuDance.App
-  命令行入口和预览窗口入口
+  命令行入口、预览窗口入口和 PNG 图片导出入口
 
 Zhengyan.MikuMikuDance.Tests
   单元测试和兼容性测试

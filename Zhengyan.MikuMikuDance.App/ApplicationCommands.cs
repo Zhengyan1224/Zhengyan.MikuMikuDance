@@ -31,6 +31,7 @@ internal static class ApplicationCommands
             "--features" => PrintFeatures(),
             "--inspect" when args.Count >= 2 => Inspect(args[1]),
             "--export-pmm" when args.Count >= 3 => ExportPmm(args[1], args[2]),
+            "--export-image" when args.Count >= 3 => ExportImage(args),
             "--pose" when args.Count >= 4 => Pose(args[1], args[2], args[3]),
             "--preview" => Preview(args.Count >= 2 ? args[1] : null, args.Count >= 3 ? args[2] : null),
             "--editor" => Editor(args.Count >= 2 ? args[1] : null),
@@ -192,6 +193,57 @@ internal static class ApplicationCommands
         return 0;
     }
 
+    private static int ExportImage(IReadOnlyList<string> args)
+    {
+        var inputPath = args[1];
+        var outputPath = args[2];
+        if (!File.Exists(inputPath))
+        {
+            Console.Error.WriteLine($"File not found: {inputPath}");
+            return 1;
+        }
+
+        if (!TryReadImageSize(args, out var width, out var height))
+        {
+            return 1;
+        }
+
+        try
+        {
+            var (project, renderer) = CreateExportScene(inputPath);
+            project.Capture.Clear();
+            var options = OpenGlRenderHostOptions.Default with
+            {
+                Title = "Zhengyan MikuMikuDance Image Export",
+                Width = width,
+                Height = height,
+                CaptureAndClose = true
+            };
+
+            using var host = new OpenGlRenderHost(project, options);
+            using (renderer)
+            {
+                host.Run(renderer);
+            }
+
+            var frame = project.Capture.LastFrame;
+            if (frame is null)
+            {
+                Console.Error.WriteLine("Image export failed: no frame was captured.");
+                return 1;
+            }
+
+            RenderPngWriter.WriteFrame(outputPath, frame);
+            Console.WriteLine($"Wrote PNG: {outputPath} ({frame.Width}x{frame.Height})");
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Image export failed: {exception.Message}");
+            return 1;
+        }
+    }
+
     private static int Pose(string modelPath, string motionPath, string frameText)
     {
         if (!File.Exists(modelPath))
@@ -246,6 +298,7 @@ internal static class ApplicationCommands
         Console.WriteLine("  --features              Print nanoem-compatible feature catalog");
         Console.WriteLine("  --inspect <file.pmd|file.pmx|file.vmd|file.nmd|file.x|file.fx|file.zmm|file.nma|file.pmm>");
         Console.WriteLine("  --export-pmm <file.zmm|file.nma|file.pmm> <out.pmm>");
+        Console.WriteLine("  --export-image <file.pmd|file.pmx|file.x|file.zmm|file.nma|file.pmm> <out.png> [width] [height]");
         Console.WriteLine("  --pose <file.pmd|file.pmx> <file.vmd|file.nmd> <frame>");
         Console.WriteLine("  --preview [file.pmd|file.pmx|file.x] [file.vmd|file.nmd]");
         Console.WriteLine("  --editor [file.zmm|file.nma|file.pmm]");
@@ -321,6 +374,64 @@ internal static class ApplicationCommands
         }
 
         return new BasicMeshRenderer(meshes, textureBaseDirectory);
+    }
+
+    private static bool TryReadImageSize(IReadOnlyList<string> args, out int width, out int height)
+    {
+        width = OpenGlRenderHostOptions.Default.Width;
+        height = OpenGlRenderHostOptions.Default.Height;
+
+        if (args.Count >= 4 && !TryReadPositiveInt(args[3], "width", out width))
+        {
+            return false;
+        }
+
+        if (args.Count >= 5 && !TryReadPositiveInt(args[4], "height", out height))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryReadPositiveInt(string text, string name, out int value)
+    {
+        if (int.TryParse(text, out value) && value > 0)
+        {
+            return true;
+        }
+
+        Console.Error.WriteLine($"Invalid {name}: {text}");
+        return false;
+    }
+
+    private static (MmdProject Project, IRenderer Renderer) CreateExportScene(string inputPath)
+    {
+        var extension = Path.GetExtension(inputPath).ToLowerInvariant();
+        if (extension is ".zmm" or ".nma" or ".pmm")
+        {
+            var project = LoadProject(inputPath);
+            var meshes = BuildProjectMeshes(project);
+            var textureBaseDirectory = Path.GetDirectoryName(Path.GetFullPath(inputPath));
+            return (project, new BasicMeshRenderer(meshes, textureBaseDirectory));
+        }
+
+        var previewProject = new MmdProject { Name = "Image Export" };
+        var previewMeshes = new List<RenderMesh>();
+        LoadPreviewAsset(inputPath, previewProject, previewMeshes);
+        var previewTextureBaseDirectory = Path.GetDirectoryName(Path.GetFullPath(inputPath));
+        return (previewProject, new BasicMeshRenderer(previewMeshes, previewTextureBaseDirectory));
+    }
+
+    private static List<RenderMesh> BuildProjectMeshes(MmdProject project)
+    {
+        var meshes = new List<RenderMesh>();
+        foreach (var target in RenderPicker.CreateTargets(project))
+        {
+            meshes.AddRange(target.Meshes);
+        }
+
+        return meshes;
     }
 
     private static ModelInstance? LoadPreviewAsset(string path, MmdProject project, List<RenderMesh> meshes)

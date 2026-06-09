@@ -64,13 +64,13 @@ internal sealed class OpenGlEffectRenderTargetCache : IDisposable
         name = ResolveColorTargetName(name) ?? ResolveDepthTargetName(name);
         if (!string.IsNullOrWhiteSpace(name) && _colorTargets.TryGetValue(name, out var colorTarget))
         {
-            BindTexture(textureUnitIndex, colorTarget.Texture);
+            BindTexture(textureUnitIndex, colorTarget.Texture, uniform.MipmapEnabled || TargetMipmapEnabled(colorTarget.Name));
             return true;
         }
 
         if (!string.IsNullOrWhiteSpace(name) && _depthTargets.TryGetValue(name, out var depthTarget))
         {
-            BindTexture(textureUnitIndex, depthTarget.Texture);
+            BindTexture(textureUnitIndex, depthTarget.Texture, uniform.MipmapEnabled || TargetMipmapEnabled(depthTarget.Name));
             return true;
         }
 
@@ -79,7 +79,7 @@ internal sealed class OpenGlEffectRenderTargetCache : IDisposable
             var target = _colorTargets.Values.FirstOrDefault();
             if (target is not null)
             {
-                BindTexture(textureUnitIndex, target.Texture);
+                BindTexture(textureUnitIndex, target.Texture, uniform.MipmapEnabled || TargetMipmapEnabled(target.Name));
                 return true;
             }
         }
@@ -89,7 +89,7 @@ internal sealed class OpenGlEffectRenderTargetCache : IDisposable
             var target = _depthTargets.Values.FirstOrDefault();
             if (target is not null)
             {
-                BindTexture(textureUnitIndex, target.Texture);
+                BindTexture(textureUnitIndex, target.Texture, uniform.MipmapEnabled || TargetMipmapEnabled(target.Name));
                 return true;
             }
         }
@@ -247,10 +247,18 @@ internal sealed class OpenGlEffectRenderTargetCache : IDisposable
 
     private OpenGlEffectColorTarget EnsureColorTarget(string name)
     {
+        var mipmapEnabled = TargetMipmapEnabled(name);
         if (_colorTargets.TryGetValue(name, out var existing) &&
             existing.Width == TargetWidth(name) &&
             existing.Height == TargetHeight(name))
         {
+            if (existing.MipmapEnabled != mipmapEnabled)
+            {
+                ConfigureExistingRenderTexture(existing.Texture, mipmapEnabled);
+                existing = existing with { MipmapEnabled = mipmapEnabled };
+                _colorTargets[name] = existing;
+            }
+
             return existing;
         }
 
@@ -277,8 +285,8 @@ internal sealed class OpenGlEffectRenderTargetCache : IDisposable
                 null);
         }
 
-        ConfigureRenderTexture();
-        var target = new OpenGlEffectColorTarget(name, texture, width, height);
+        ConfigureRenderTexture(mipmapEnabled);
+        var target = new OpenGlEffectColorTarget(name, texture, width, height, mipmapEnabled);
         _colorTargets[name] = target;
         return target;
     }
@@ -290,7 +298,9 @@ internal sealed class OpenGlEffectRenderTargetCache : IDisposable
             existing.Width == colorTarget.Width &&
             existing.Height == colorTarget.Height)
         {
-            return existing with { Metadata = parameter.OffscreenTarget! };
+            var updated = existing with { Metadata = parameter.OffscreenTarget! };
+            _offscreenTargets[parameter.Name] = updated;
+            return updated;
         }
 
         if (existing is not null)
@@ -312,10 +322,18 @@ internal sealed class OpenGlEffectRenderTargetCache : IDisposable
 
     private OpenGlEffectDepthTarget EnsureDepthTarget(string name)
     {
+        var mipmapEnabled = TargetMipmapEnabled(name);
         if (_depthTargets.TryGetValue(name, out var existing) &&
             existing.Width == _viewportWidth &&
             existing.Height == _viewportHeight)
         {
+            if (existing.MipmapEnabled != mipmapEnabled)
+            {
+                ConfigureExistingRenderTexture(existing.Texture, mipmapEnabled);
+                existing = existing with { MipmapEnabled = mipmapEnabled };
+                _depthTargets[name] = existing;
+            }
+
             return existing;
         }
 
@@ -324,13 +342,13 @@ internal sealed class OpenGlEffectRenderTargetCache : IDisposable
             _gl.DeleteTexture(existing.Texture);
         }
 
-        var texture = CreateDepthTexture(_viewportWidth, _viewportHeight);
-        var target = new OpenGlEffectDepthTarget(name, texture, _viewportWidth, _viewportHeight);
+        var texture = CreateDepthTexture(_viewportWidth, _viewportHeight, mipmapEnabled);
+        var target = new OpenGlEffectDepthTarget(name, texture, _viewportWidth, _viewportHeight, mipmapEnabled);
         _depthTargets[name] = target;
         return target;
     }
 
-    private uint CreateDepthTexture(int width, int height)
+    private uint CreateDepthTexture(int width, int height, bool mipmapEnabled = false)
     {
         var texture = _gl.GenTexture();
         _gl.BindTexture(TextureTarget.Texture2D, texture);
@@ -348,7 +366,7 @@ internal sealed class OpenGlEffectRenderTargetCache : IDisposable
                 null);
         }
 
-        ConfigureRenderTexture();
+        ConfigureRenderTexture(mipmapEnabled);
         return texture;
     }
 
@@ -399,19 +417,49 @@ internal sealed class OpenGlEffectRenderTargetCache : IDisposable
         return false;
     }
 
-    private void ConfigureRenderTexture()
+    private bool TargetMipmapEnabled(string name)
     {
-        _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Linear);
+        if (_parameters.TryGetValue(name, out var parameter) && parameter.MipmapEnabled)
+        {
+            return true;
+        }
+
+        return _offscreenTargets.TryGetValue(name, out var offscreenTarget) &&
+            offscreenTarget.Metadata.MipmapEnabled;
+    }
+
+    private void ConfigureExistingRenderTexture(uint texture, bool mipmapEnabled)
+    {
+        _gl.BindTexture(TextureTarget.Texture2D, texture);
+        ConfigureRenderTexture(mipmapEnabled);
+    }
+
+    private void ConfigureRenderTexture(bool mipmapEnabled)
+    {
+        _gl.TexParameter(
+            TextureTarget.Texture2D,
+            TextureParameterName.TextureMinFilter,
+            (int)(mipmapEnabled ? GLEnum.LinearMipmapLinear : GLEnum.Linear));
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Linear);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
+        if (mipmapEnabled)
+        {
+            _gl.GenerateMipmap(TextureTarget.Texture2D);
+        }
+
         _gl.BindTexture(TextureTarget.Texture2D, 0);
     }
 
-    private void BindTexture(int textureUnitIndex, uint texture)
+    private void BindTexture(int textureUnitIndex, uint texture, bool mipmapEnabled)
     {
         _gl.ActiveTexture(TextureUnit.Texture0 + textureUnitIndex);
         _gl.BindTexture(TextureTarget.Texture2D, texture);
+        if (mipmapEnabled)
+        {
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.LinearMipmapLinear);
+            _gl.GenerateMipmap(TextureTarget.Texture2D);
+        }
     }
 
     private void DeleteTargets()
@@ -533,9 +581,9 @@ internal interface IOpenGlEffectTarget
     uint Texture { get; }
 }
 
-internal sealed record OpenGlEffectColorTarget(string Name, uint Texture, int Width, int Height) : IOpenGlEffectTarget;
+internal sealed record OpenGlEffectColorTarget(string Name, uint Texture, int Width, int Height, bool MipmapEnabled) : IOpenGlEffectTarget;
 
-internal sealed record OpenGlEffectDepthTarget(string Name, uint Texture, int Width, int Height) : IOpenGlEffectTarget;
+internal sealed record OpenGlEffectDepthTarget(string Name, uint Texture, int Width, int Height, bool MipmapEnabled) : IOpenGlEffectTarget;
 
 internal sealed record OpenGlEffectOffscreenTarget(
     string Name,

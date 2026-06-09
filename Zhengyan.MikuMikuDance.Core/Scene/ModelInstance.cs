@@ -26,6 +26,8 @@ public sealed class ModelInstance
 
     public SceneTransform Transform { get; } = new();
 
+    public EffectParameterOverrideSet EffectParameterOverrides { get; } = new();
+
     public IReadOnlyDictionary<string, MorphWeightSample> MorphWeights => new ReadOnlyDictionary<string, MorphWeightSample>(_morphWeights);
 
     public IReadOnlyDictionary<string, ModelOutsideParentBinding> OutsideParentBindings =>

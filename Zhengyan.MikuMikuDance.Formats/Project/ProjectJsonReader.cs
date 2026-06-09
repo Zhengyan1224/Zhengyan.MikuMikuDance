@@ -40,6 +40,7 @@ public sealed class ProjectJsonReader
         ApplyCamera(project.Camera, document.Camera);
         ApplyLight(project.Light, document.Light);
         ApplyBackground(project.Background, document.Background, baseDirectory);
+        ApplyColorTransform(project.ColorTransform, document.ColorTransform);
         var models = document.Models.OrderBy(item => item.DrawOrder).ToArray();
         foreach (var model in models)
         {
@@ -144,7 +145,23 @@ public sealed class ProjectJsonReader
         background.ImageOffsetX = dto.ImageOffsetX;
         background.ImageOffsetY = dto.ImageOffsetY;
         background.ImageScale = dto.ImageScale;
+        background.ImageOpacity = dto.ImageOpacity;
+        background.ImageLayoutMode = ParseEnum(dto.ImageLayoutMode, BackgroundImageLayoutMode.Fit);
         background.Normalize();
+    }
+
+    private static void ApplyColorTransform(SceneColorTransform transform, ColorTransformDto? dto)
+    {
+        if (dto is null)
+        {
+            return;
+        }
+
+        transform.Brightness = dto.Brightness;
+        transform.Contrast = dto.Contrast;
+        transform.Saturation = dto.Saturation;
+        transform.Gamma = dto.Gamma;
+        transform.Normalize();
     }
 
     private static void AddModel(
@@ -178,6 +195,8 @@ public sealed class ProjectJsonReader
                 instance.SetMorphWeight(name, weight);
             }
         }
+
+        ApplyEffectParameters(instance.EffectParameterOverrides, dto.EffectParameters);
     }
 
     private static void ApplyModelOutsideParents(MmdProject project, IReadOnlyList<ModelDto> models)
@@ -243,7 +262,42 @@ public sealed class ProjectJsonReader
             ParentBoneName = dto.ParentBone
         };
         ApplyTransform(accessory.Transform, dto.Transform);
+        ApplyEffectParameters(accessory.EffectParameterOverrides, dto.EffectParameters);
         project.AddAccessory(accessory);
+    }
+
+    private static void ApplyEffectParameters(
+        EffectParameterOverrideSet overrides,
+        IReadOnlyList<EffectParameterDto>? parameters)
+    {
+        if (parameters is null)
+        {
+            return;
+        }
+
+        foreach (var parameter in parameters)
+        {
+            if (string.IsNullOrWhiteSpace(parameter.Name))
+            {
+                continue;
+            }
+
+            switch (parameter.Type.Trim().ToLowerInvariant())
+            {
+                case "bool" when parameter.Bool.HasValue:
+                    overrides.SetBool(parameter.Name, parameter.Bool.Value);
+                    break;
+                case "int" when parameter.Int.HasValue:
+                    overrides.SetInt(parameter.Name, parameter.Int.Value);
+                    break;
+                case "float" when parameter.Float.HasValue:
+                    overrides.SetFloat(parameter.Name, parameter.Float.Value);
+                    break;
+                case "vector4" when parameter.Vector4 is not null:
+                    overrides.SetVector4(parameter.Name, parameter.Vector4.ToVector4());
+                    break;
+            }
+        }
     }
 
     private static void AddMotion(
@@ -413,6 +467,8 @@ public sealed class ProjectJsonReader
 
         public BackgroundDto? Background { get; set; }
 
+        public ColorTransformDto? ColorTransform { get; set; }
+
         public List<ModelDto> Models { get; set; } = [];
 
         public List<AccessoryDto> Accessories { get; set; } = [];
@@ -485,6 +541,21 @@ public sealed class ProjectJsonReader
         public int ImageOffsetY { get; set; }
 
         public float ImageScale { get; set; } = 1f;
+
+        public float ImageOpacity { get; set; } = 1f;
+
+        public string? ImageLayoutMode { get; set; }
+    }
+
+    private sealed class ColorTransformDto
+    {
+        public float Brightness { get; set; }
+
+        public float Contrast { get; set; } = 1f;
+
+        public float Saturation { get; set; } = 1f;
+
+        public float Gamma { get; set; } = 1f;
     }
 
     private sealed class ModelDto
@@ -506,6 +577,8 @@ public sealed class ProjectJsonReader
         public Dictionary<string, float>? MorphWeights { get; set; }
 
         public List<ModelOutsideParentDto>? OutsideParents { get; set; }
+
+        public List<EffectParameterDto>? EffectParameters { get; set; }
     }
 
     private sealed class ModelOutsideParentDto
@@ -515,6 +588,21 @@ public sealed class ProjectJsonReader
         public string? ParentModel { get; set; }
 
         public string? ParentBone { get; set; }
+    }
+
+    private sealed class EffectParameterDto
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public string Type { get; set; } = string.Empty;
+
+        public bool? Bool { get; set; }
+
+        public int? Int { get; set; }
+
+        public float? Float { get; set; }
+
+        public Vector4Dto? Vector4 { get; set; }
     }
 
     private sealed class AccessoryDto
@@ -534,6 +622,8 @@ public sealed class ProjectJsonReader
         public string? ParentModel { get; set; }
 
         public string? ParentBone { get; set; }
+
+        public List<EffectParameterDto>? EffectParameters { get; set; }
     }
 
     private sealed class AccessoryMeshDto
@@ -574,6 +664,22 @@ public sealed class ProjectJsonReader
         public Vector3 ToVector3()
         {
             return new Vector3(X, Y, Z);
+        }
+    }
+
+    private sealed class Vector4Dto
+    {
+        public float X { get; set; }
+
+        public float Y { get; set; }
+
+        public float Z { get; set; }
+
+        public float W { get; set; }
+
+        public Vector4 ToVector4()
+        {
+            return new Vector4(X, Y, Z, W);
         }
     }
 }

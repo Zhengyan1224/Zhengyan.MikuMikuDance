@@ -17,6 +17,8 @@ public sealed class Accessory
 
     public SceneTransform Transform { get; } = new();
 
+    public EffectParameterOverrideSet EffectParameterOverrides { get; } = new();
+
     public Vector3 Translation
     {
         get => Transform.Translation;

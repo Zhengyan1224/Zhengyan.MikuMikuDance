@@ -9,6 +9,7 @@ public sealed class BasicMeshRenderer : IRenderer, IOpenGlRenderer
     private readonly string? _textureBaseDirectory;
     private readonly List<OpenGlMeshBuffer> _glMeshes = [];
     private OpenGlMeshProgram? _program;
+    private OpenGlBackgroundImagePass? _backgroundImagePass;
 
     public BasicMeshRenderer(IReadOnlyList<RenderMesh> meshes, string? textureBaseDirectory = null)
     {
@@ -24,6 +25,7 @@ public sealed class BasicMeshRenderer : IRenderer, IOpenGlRenderer
     public void Load(GL gl, RenderDeviceInfo deviceInfo)
     {
         _program = new OpenGlMeshProgram(gl, _textureBaseDirectory);
+        _backgroundImagePass = new OpenGlBackgroundImagePass(gl, _textureBaseDirectory);
         foreach (var mesh in _meshes)
         {
             if (mesh.Vertices.Count > 0 && mesh.Indices.Count > 0)
@@ -44,6 +46,7 @@ public sealed class BasicMeshRenderer : IRenderer, IOpenGlRenderer
             return;
         }
 
+        _backgroundImagePass?.Draw(context);
         _program.Use(context);
         _program.DrawScene(_glMeshes);
         _program.End();
@@ -57,6 +60,8 @@ public sealed class BasicMeshRenderer : IRenderer, IOpenGlRenderer
         }
 
         _glMeshes.Clear();
+        _backgroundImagePass?.Dispose();
+        _backgroundImagePass = null;
         _program?.Dispose();
         _program = null;
     }

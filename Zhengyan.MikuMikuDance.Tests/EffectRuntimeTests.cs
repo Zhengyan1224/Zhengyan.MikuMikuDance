@@ -384,6 +384,75 @@ public sealed class EffectRuntimeTests
     }
 
     [Fact]
+    public void CompilesMipmapAnnotationsForTexturesAndRenderTargets()
+    {
+        const string text = """
+            float4 VS(float4 position : POSITION) : POSITION
+            {
+                return position;
+            }
+
+            texture2D mainTexture : MATERIALTEXTURE <
+              string ResourceName = "diffuse.png";
+              bool MipMap = true;
+            >;
+
+            sampler2D mainSampler = sampler_state
+            {
+                Texture = <mainTexture>;
+            };
+
+            texture2D sceneTarget : RENDERCOLORTARGET <
+              int Mipmap = 1;
+            >;
+
+            sampler2D sceneSampler = sampler_state
+            {
+                Texture = <sceneTarget>;
+            };
+
+            texture2D normalTarget : OFFSCREENRENDERTARGET <
+              string Description = "Normal target";
+              bool GenerateMipmap = true;
+            >;
+
+            sampler2D normalSampler = sampler_state
+            {
+                Texture = <normalTarget>;
+            };
+
+            float4 PS(float2 uv : TEXCOORD0) : COLOR0
+            {
+                return tex2D(mainSampler, uv) + tex2D(sceneSampler, uv) + tex2D(normalSampler, uv);
+            }
+
+            technique Main {
+              pass P0 {
+                VertexShader = compile vs_3_0 VS();
+                PixelShader = compile ps_3_0 PS();
+              }
+            }
+            """;
+
+        var effect = RenderEffectCompiler.Compile(new MmeEffectReader().ReadText(text, "mipmap.fx"));
+
+        var mainTexture = effect.Parameters.Single(parameter => parameter.Name == "mainTexture");
+        Assert.True(mainTexture.MipmapEnabled);
+
+        var sceneTarget = effect.Parameters.Single(parameter => parameter.Name == "sceneTarget");
+        Assert.True(sceneTarget.MipmapEnabled);
+
+        var normalTarget = effect.Parameters.Single(parameter => parameter.Name == "normalTarget");
+        Assert.True(normalTarget.MipmapEnabled);
+        Assert.True(Assert.IsType<RenderEffectOffscreenTarget>(normalTarget.OffscreenTarget).MipmapEnabled);
+
+        var shader = Assert.IsType<RenderEffectShaderProgram>(effect.DefaultTechnique!.Passes.Single().Shader);
+        Assert.True(shader.Uniforms.Single(uniform => uniform.Name == "mainSampler").MipmapEnabled);
+        Assert.True(shader.Uniforms.Single(uniform => uniform.Name == "sceneSampler").MipmapEnabled);
+        Assert.True(shader.Uniforms.Single(uniform => uniform.Name == "normalSampler").MipmapEnabled);
+    }
+
+    [Fact]
     public void CreatesOffscreenDrawPlanFromDefaultEffectConditions()
     {
         var target = new RenderEffectOffscreenTarget(

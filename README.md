@@ -117,7 +117,8 @@ dotnet run --project .\Zhengyan.MikuMikuDance.App -- --export-pmm path\to\scene.
 
 ```powershell
 dotnet run --project .\Zhengyan.MikuMikuDance.App -- --export-image path\to\model.pmx path\to\frame.png 1280 720
-dotnet run --project .\Zhengyan.MikuMikuDance.App -- --export-image path\to\scene.zmm path\to\frame.png
+dotnet run --project .\Zhengyan.MikuMikuDance.App -- --export-image path\to\scene.zmm path\to\frame.png --transparent
+dotnet run --project .\Zhengyan.MikuMikuDance.App -- --export-image path\to\scene.zmm path\to\frame.png --clear-color #202830ff
 ```
 
 计算指定帧姿态：

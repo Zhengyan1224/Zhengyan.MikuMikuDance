@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zhengyan.MikuMikuDance.Core\Zhengyan.MikuMikuDance.Core.csproj" />
+    <ProjectReference Include="..\Zhengyan.MikuMikuDance.App\Zhengyan.MikuMikuDance.App.csproj" />
     <ProjectReference Include="..\Zhengyan.MikuMikuDance.Formats\Zhengyan.MikuMikuDance.Formats.csproj" />
     <ProjectReference Include="..\Zhengyan.MikuMikuDance.Rendering.OpenGL\Zhengyan.MikuMikuDance.Rendering.OpenGL.csproj" />
     <ProjectReference Include="..\Zhengyan.MikuMikuDance.Rendering\Zhengyan.MikuMikuDance.Rendering.csproj" />

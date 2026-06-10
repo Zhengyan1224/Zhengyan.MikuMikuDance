@@ -34,6 +34,12 @@ public sealed class OpenGlRenderHost : IRenderHost
         options.API = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.ForwardCompatible, new APIVersion(3, 3));
         options.PreferredDepthBufferBits = 24;
         options.PreferredStencilBufferBits = 8;
+        if (_hostOptions.TransparentFramebuffer || _hostOptions.ClearColor.W < 0.999f)
+        {
+            options.PreferredBitDepth = new Vector4D<int>(8, 8, 8, 8);
+            options.TransparentFramebuffer = true;
+        }
+
         options.VSync = true;
 
         _window = Window.Create(options);

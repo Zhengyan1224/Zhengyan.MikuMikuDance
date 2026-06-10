@@ -195,16 +195,16 @@ internal static class ApplicationCommands
 
     private static int ExportImage(IReadOnlyList<string> args)
     {
-        var inputPath = args[1];
-        var outputPath = args[2];
-        if (!File.Exists(inputPath))
+        if (!ImageExportOptions.TryParse(args, Console.Error, out var imageOptions))
         {
-            Console.Error.WriteLine($"File not found: {inputPath}");
             return 1;
         }
 
-        if (!TryReadImageSize(args, out var width, out var height))
+        var inputPath = imageOptions.InputPath;
+        var outputPath = imageOptions.OutputPath;
+        if (!File.Exists(inputPath))
         {
+            Console.Error.WriteLine($"File not found: {inputPath}");
             return 1;
         }
 
@@ -215,9 +215,11 @@ internal static class ApplicationCommands
             var options = OpenGlRenderHostOptions.Default with
             {
                 Title = "Zhengyan MikuMikuDance Image Export",
-                Width = width,
-                Height = height,
-                CaptureAndClose = true
+                Width = imageOptions.Width,
+                Height = imageOptions.Height,
+                ClearColor = imageOptions.ClearColor,
+                CaptureAndClose = true,
+                TransparentFramebuffer = imageOptions.TransparentFramebuffer
             };
 
             using var host = new OpenGlRenderHost(project, options);
@@ -298,7 +300,7 @@ internal static class ApplicationCommands
         Console.WriteLine("  --features              Print nanoem-compatible feature catalog");
         Console.WriteLine("  --inspect <file.pmd|file.pmx|file.vmd|file.nmd|file.x|file.fx|file.zmm|file.nma|file.pmm>");
         Console.WriteLine("  --export-pmm <file.zmm|file.nma|file.pmm> <out.pmm>");
-        Console.WriteLine("  --export-image <file.pmd|file.pmx|file.x|file.zmm|file.nma|file.pmm> <out.png> [width] [height]");
+        Console.WriteLine("  --export-image <file.pmd|file.pmx|file.x|file.zmm|file.nma|file.pmm> <out.png> [width] [height] [--transparent] [--clear-color #RRGGBB[AA]]");
         Console.WriteLine("  --pose <file.pmd|file.pmx> <file.vmd|file.nmd> <frame>");
         Console.WriteLine("  --preview [file.pmd|file.pmx|file.x] [file.vmd|file.nmd]");
         Console.WriteLine("  --editor [file.zmm|file.nma|file.pmm]");
@@ -374,35 +376,6 @@ internal static class ApplicationCommands
         }
 
         return new BasicMeshRenderer(meshes, textureBaseDirectory);
-    }
-
-    private static bool TryReadImageSize(IReadOnlyList<string> args, out int width, out int height)
-    {
-        width = OpenGlRenderHostOptions.Default.Width;
-        height = OpenGlRenderHostOptions.Default.Height;
-
-        if (args.Count >= 4 && !TryReadPositiveInt(args[3], "width", out width))
-        {
-            return false;
-        }
-
-        if (args.Count >= 5 && !TryReadPositiveInt(args[4], "height", out height))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static bool TryReadPositiveInt(string text, string name, out int value)
-    {
-        if (int.TryParse(text, out value) && value > 0)
-        {
-            return true;
-        }
-
-        Console.Error.WriteLine($"Invalid {name}: {text}");
-        return false;
     }
 
     private static (MmdProject Project, IRenderer Renderer) CreateExportScene(string inputPath)

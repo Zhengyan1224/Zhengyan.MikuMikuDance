@@ -9,6 +9,7 @@ public sealed record OpenGlRenderHostOptions(
     Vector4 ClearColor)
 {
     public bool CaptureAndClose { get; init; }
+    public bool TransparentFramebuffer { get; init; }
 
     public static OpenGlRenderHostOptions Default { get; } = new(
         "Zhengyan MikuMikuDance",
